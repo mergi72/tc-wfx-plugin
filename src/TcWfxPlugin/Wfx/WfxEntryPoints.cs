@@ -2,6 +2,9 @@ namespace TcWfxPlugin.Wfx;
 
 public sealed class WfxEntryPoints
 {
+    private const int CopyFlagOverwrite = 0x02;
+    private const int CopyFlagResume = 0x04;
+
     private readonly WfxPluginRuntime _runtime;
 
     public WfxEntryPoints(WfxPluginRuntime runtime)
@@ -47,9 +50,31 @@ public sealed class WfxEntryPoints
         return _runtime.CopyAsync(oldName, newName).GetAwaiter().GetResult();
     }
 
-    public int FsGetFile(string remoteName, string localName)
+    public int FsGetFile(string remoteName, string localName, int copyFlags = 0)
     {
+        var options = ParseCopyFlags(copyFlags);
+        if (options.Resume)
+        {
+            return WfxResultCodes.NotSupported;
+        }
+
+        if (!options.Overwrite && File.Exists(localName))
+        {
+            return WfxResultCodes.WriteError;
+        }
+
         return _runtime.GetFileAsync(remoteName, localName).GetAwaiter().GetResult();
+    }
+
+    public int FsPutFile(string localName, string remoteName, int copyFlags)
+    {
+        var options = ParseCopyFlags(copyFlags);
+        if (options.Resume)
+        {
+            return WfxResultCodes.NotSupported;
+        }
+
+        return FsPutFile(localName, remoteName, options.Overwrite);
     }
 
     public int FsPutFile(string localName, string remoteName, bool overwrite)
@@ -65,5 +90,12 @@ public sealed class WfxEntryPoints
     public void CancelCurrentTransfer()
     {
         _runtime.CancelCurrentTransfer();
+    }
+
+    private static (bool Overwrite, bool Resume) ParseCopyFlags(int copyFlags)
+    {
+        var overwrite = (copyFlags & CopyFlagOverwrite) != 0;
+        var resume = (copyFlags & CopyFlagResume) != 0;
+        return (overwrite, resume);
     }
 }

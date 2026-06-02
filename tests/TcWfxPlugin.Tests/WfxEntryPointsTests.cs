@@ -247,6 +247,61 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsGetFile_CopyFlagResume_ReturnsNotSupported()
+    {
+        var entryPoints = CreateEntryPoints();
+        var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
+
+        var result = entryPoints.FsGetFile("\\edocat\\file.txt", localPath, copyFlags: 0x04);
+
+        Assert.Equal(WfxResultCodes.NotSupported, result);
+    }
+
+    [Fact]
+    public void FsGetFile_WithoutOverwrite_WhenTargetExists_ReturnsWriteError()
+    {
+        var entryPoints = CreateEntryPoints();
+        var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(localPath, "existing");
+
+        try
+        {
+            var result = entryPoints.FsGetFile("\\edocat\\file.txt", localPath, copyFlags: 0);
+
+            Assert.Equal(WfxResultCodes.WriteError, result);
+        }
+        finally
+        {
+            if (File.Exists(localPath))
+            {
+                File.Delete(localPath);
+            }
+        }
+    }
+
+    [Fact]
+    public void FsGetFile_WithOverwrite_WhenTargetExists_ReturnsSuccess()
+    {
+        var entryPoints = CreateEntryPoints();
+        var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(localPath, "existing");
+
+        try
+        {
+            var result = entryPoints.FsGetFile("\\edocat\\file.txt", localPath, copyFlags: 0x02);
+
+            Assert.Equal(WfxResultCodes.Success, result);
+        }
+        finally
+        {
+            if (File.Exists(localPath))
+            {
+                File.Delete(localPath);
+            }
+        }
+    }
+
+    [Fact]
     public void FsPutFile_ValidPath_ReturnsSuccess()
     {
         var entryPoints = CreateEntryPoints();
@@ -256,6 +311,58 @@ public sealed class WfxEntryPointsTests
         var result = entryPoints.FsPutFile(localPath, "\\edocat\\incoming", overwrite: true);
 
         Assert.Equal(WfxResultCodes.Success, result);
+    }
+
+    [Fact]
+    public void FsPutFile_CopyFlagResume_ReturnsNotSupported()
+    {
+        var entryPoints = CreateEntryPoints();
+        var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(localPath, "hello");
+
+        try
+        {
+            var result = entryPoints.FsPutFile(localPath, "\\edocat\\incoming", copyFlags: 0x04);
+
+            Assert.Equal(WfxResultCodes.NotSupported, result);
+        }
+        finally
+        {
+            if (File.Exists(localPath))
+            {
+                File.Delete(localPath);
+            }
+        }
+    }
+
+    [Fact]
+    public void FsPutFile_CopyFlags_MapsOverwriteToUpload()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+        var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(localPath, "hello");
+
+        try
+        {
+            var withoutOverwrite = entryPoints.FsPutFile(localPath, "\\edocat\\incoming", copyFlags: 0);
+            var firstOverwriteFlag = bridgeClient.LastUploadOverwrite;
+            var withOverwrite = entryPoints.FsPutFile(localPath, "\\edocat\\incoming", copyFlags: 0x02);
+            var secondOverwriteFlag = bridgeClient.LastUploadOverwrite;
+
+            Assert.Equal(WfxResultCodes.Success, withoutOverwrite);
+            Assert.False(firstOverwriteFlag);
+
+            Assert.Equal(WfxResultCodes.Success, withOverwrite);
+            Assert.True(secondOverwriteFlag);
+        }
+        finally
+        {
+            if (File.Exists(localPath))
+            {
+                File.Delete(localPath);
+            }
+        }
     }
 
     private static WfxEntryPoints CreateEntryPoints(string[]? providers = null)
@@ -289,6 +396,7 @@ public sealed class WfxEntryPointsTests
         private string[] _providers;
         public int GetProvidersCallCount { get; private set; }
         public bool FailGetProviders { get; set; }
+        public bool LastUploadOverwrite { get; private set; }
 
         public FakeBridgeClient(string[] providers)
         {
@@ -375,6 +483,9 @@ public sealed class WfxEntryPointsTests
         }
 
         public Task<WfxResponse<JsonElement>> UploadAsync(string destination, string fileName, BridgeAuthContext auth, string? contentBase64, bool overwrite, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+        {
+            LastUploadOverwrite = overwrite;
+            return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+        }
     }
 }

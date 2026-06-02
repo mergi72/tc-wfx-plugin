@@ -87,12 +87,11 @@ public static class WfxNativeExports
     [UnmanagedCallersOnly(EntryPoint = "FsGetFileW")]
     public static int FsGetFileW(nint remoteNamePtr, nint localNamePtr, int copyFlags, nint remoteInfo)
     {
-        _ = copyFlags;
         _ = remoteInfo;
 
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
-        return EntryPoints.Value.FsGetFile(remoteName, localName);
+        return EntryPoints.Value.FsGetFile(remoteName, localName, copyFlags);
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsPutFileW")]
@@ -100,8 +99,7 @@ public static class WfxNativeExports
     {
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
-        var overwrite = (copyFlags & 0x02) != 0;
-        return EntryPoints.Value.FsPutFile(localName, remoteName, overwrite);
+        return EntryPoints.Value.FsPutFile(localName, remoteName, copyFlags);
     }
 
     private static void WriteFindData(nint destination, WfxFindData item)
