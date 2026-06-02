@@ -11,6 +11,7 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
   - For cross-repo checkout in GitHub Actions, configure secret `BRIDGE_REPO_TOKEN` (read access to `mergi72/edocat-bridge`).
 - Branch protection helper: CI publishes final job `protection-gate` that summarizes required job outcomes.
   - Recommended GitHub branch rule for `main`: require status check `protection-gate`.
+	- If GitHub plan does not allow branch protection for private repositories, use process fallback: no direct pushes to `main`; merge only via PR after successful `protection-gate`.
 
 ## Release Notes
 
