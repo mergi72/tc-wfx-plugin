@@ -64,18 +64,28 @@ public sealed class WfxEntryPointsTests
     [Fact]
     public void FsFindFirst_RootPath_UsesCachedProvidersWithinTtl()
     {
-        var (entryPoints, bridgeClient) = CreateEntryPointsAndClient(new[] { "dynamic-a", "dynamic-b" });
+        var previousProviders = Environment.GetEnvironmentVariable("TC_WFX_PROVIDERS");
+        Environment.SetEnvironmentVariable("TC_WFX_PROVIDERS", null);
 
-        var firstResult = entryPoints.FsFindFirst("\\", out var firstHandle, out _);
-        var closeFirst = entryPoints.FsFindClose(firstHandle);
-        var secondResult = entryPoints.FsFindFirst("\\", out var secondHandle, out _);
-        var closeSecond = entryPoints.FsFindClose(secondHandle);
+        try
+        {
+            var (entryPoints, bridgeClient) = CreateEntryPointsAndClient(new[] { "dynamic-a", "dynamic-b" });
 
-        Assert.Equal(WfxResultCodes.Success, firstResult);
-        Assert.Equal(WfxResultCodes.Success, secondResult);
-        Assert.Equal(WfxResultCodes.Success, closeFirst);
-        Assert.Equal(WfxResultCodes.Success, closeSecond);
-        Assert.Equal(1, bridgeClient.GetProvidersCallCount);
+            var firstResult = entryPoints.FsFindFirst("\\", out var firstHandle, out _);
+            var closeFirst = entryPoints.FsFindClose(firstHandle);
+            var secondResult = entryPoints.FsFindFirst("\\", out var secondHandle, out _);
+            var closeSecond = entryPoints.FsFindClose(secondHandle);
+
+            Assert.Equal(WfxResultCodes.Success, firstResult);
+            Assert.Equal(WfxResultCodes.Success, secondResult);
+            Assert.Equal(WfxResultCodes.Success, closeFirst);
+            Assert.Equal(WfxResultCodes.Success, closeSecond);
+            Assert.Equal(1, bridgeClient.GetProvidersCallCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TC_WFX_PROVIDERS", previousProviders);
+        }
     }
 
     [Fact]
