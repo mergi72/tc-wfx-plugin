@@ -62,6 +62,23 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsFindFirst_RootPath_UsesCachedProvidersWithinTtl()
+    {
+        var (entryPoints, bridgeClient) = CreateEntryPointsAndClient(new[] { "dynamic-a", "dynamic-b" });
+
+        var firstResult = entryPoints.FsFindFirst("\\", out var firstHandle, out _);
+        var closeFirst = entryPoints.FsFindClose(firstHandle);
+        var secondResult = entryPoints.FsFindFirst("\\", out var secondHandle, out _);
+        var closeSecond = entryPoints.FsFindClose(secondHandle);
+
+        Assert.Equal(WfxResultCodes.Success, firstResult);
+        Assert.Equal(WfxResultCodes.Success, secondResult);
+        Assert.Equal(WfxResultCodes.Success, closeFirst);
+        Assert.Equal(WfxResultCodes.Success, closeSecond);
+        Assert.Equal(1, bridgeClient.GetProvidersCallCount);
+    }
+
+    [Fact]
     public void FsFindFirst_WildcardPath_MapsToProviderDirectory()
     {
         var entryPoints = CreateEntryPoints();
@@ -108,7 +125,8 @@ public sealed class WfxEntryPointsTests
 
     private static WfxEntryPoints CreateEntryPoints(string[]? providers = null)
     {
-        var facade = new WfxPluginFacade(new FakeBridgeClient(providers ?? new[] { "edocat", "alfresco", "fso" }));
+        var bridgeClient = new FakeBridgeClient(providers ?? new[] { "edocat", "alfresco", "fso" });
+        var facade = new WfxPluginFacade(bridgeClient);
         var authProvider = new StaticAuthProvider(new BridgeAuthContext
         {
             Mode = "credentials",
@@ -120,9 +138,25 @@ public sealed class WfxEntryPointsTests
         return new WfxEntryPoints(runtime);
     }
 
+    private static (WfxEntryPoints EntryPoints, FakeBridgeClient BridgeClient) CreateEntryPointsAndClient(string[] providers)
+    {
+        var bridgeClient = new FakeBridgeClient(providers);
+        var facade = new WfxPluginFacade(bridgeClient);
+        var authProvider = new StaticAuthProvider(new BridgeAuthContext
+        {
+            Mode = "credentials",
+            Username = "test",
+            Password = "test",
+        });
+
+        var runtime = new WfxPluginRuntime(facade, authProvider);
+        return (new WfxEntryPoints(runtime), bridgeClient);
+    }
+
     private sealed class FakeBridgeClient : IWfxBridgeClient
     {
         private readonly string[] _providers;
+        public int GetProvidersCallCount { get; private set; }
 
         public FakeBridgeClient(string[] providers)
         {
@@ -131,6 +165,7 @@ public sealed class WfxEntryPointsTests
 
         public Task<WfxResponse<WfxProvidersData>> GetProvidersAsync(CancellationToken cancellationToken = default)
         {
+            GetProvidersCallCount++;
             return Task.FromResult(new WfxResponse<WfxProvidersData>
             {
                 Ok = true,

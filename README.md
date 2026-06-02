@@ -57,6 +57,7 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 - `TC_WFX_PASSWORD`
 - `TC_WFX_TOKEN`
 - `TC_WFX_PROVIDERS` (optional comma/semicolon-separated root provider override; when missing, providers are resolved from bridge, then fallback to `edocat,alfresco,fso`)
+- `TC_WFX_PROVIDERS_CACHE_SECONDS` (optional TTL for cached root providers loaded from bridge; default `30`, `0` disables cache)
 
 ## Bridge Endpoints Targeted
 

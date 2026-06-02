@@ -10,12 +10,17 @@ public sealed class WfxPluginRuntime
     private readonly IWfxAuthProvider _authProvider;
     private readonly Dictionary<int, FindContext> _findContexts = new();
     private readonly object _syncRoot = new();
+    private readonly object _rootProvidersCacheLock = new();
+    private readonly TimeSpan _rootProvidersCacheTtl;
     private int _nextFindHandle = 1;
+    private IReadOnlyList<string>? _cachedRootProviders;
+    private DateTime _cachedRootProvidersAtUtc;
 
     public WfxPluginRuntime(WfxPluginFacade facade, IWfxAuthProvider authProvider)
     {
         _facade = facade;
         _authProvider = authProvider;
+        _rootProvidersCacheTtl = ResolveRootProvidersCacheTtl();
     }
 
     public async Task<(int ResultCode, int Handle, WfxFindData? FirstItem)> FindFirstAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
@@ -266,12 +271,19 @@ public sealed class WfxPluginRuntime
             return configured;
         }
 
+        var cached = TryGetCachedRootProviders();
+        if (cached is not null)
+        {
+            return cached;
+        }
+
         try
         {
             var response = await _facade.GetProvidersAsync(cancellationToken);
             var providers = response.Data?.Providers;
             if (response.Ok && providers is not null && providers.Count > 0)
             {
+                CacheRootProviders(providers);
                 return providers;
             }
         }
@@ -313,6 +325,61 @@ public sealed class WfxPluginRuntime
             .ToArray();
 
         return providers;
+    }
+
+    private IReadOnlyList<string>? TryGetCachedRootProviders()
+    {
+        if (_rootProvidersCacheTtl <= TimeSpan.Zero)
+        {
+            return null;
+        }
+
+        lock (_rootProvidersCacheLock)
+        {
+            if (_cachedRootProviders is null)
+            {
+                return null;
+            }
+
+            var age = DateTime.UtcNow - _cachedRootProvidersAtUtc;
+            if (age > _rootProvidersCacheTtl)
+            {
+                _cachedRootProviders = null;
+                return null;
+            }
+
+            return _cachedRootProviders;
+        }
+    }
+
+    private void CacheRootProviders(IReadOnlyList<string> providers)
+    {
+        if (_rootProvidersCacheTtl <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        lock (_rootProvidersCacheLock)
+        {
+            _cachedRootProviders = providers.ToArray();
+            _cachedRootProvidersAtUtc = DateTime.UtcNow;
+        }
+    }
+
+    private static TimeSpan ResolveRootProvidersCacheTtl()
+    {
+        var raw = Environment.GetEnvironmentVariable("TC_WFX_PROVIDERS_CACHE_SECONDS");
+        if (!int.TryParse(raw, out var seconds))
+        {
+            seconds = 30;
+        }
+
+        if (seconds < 0)
+        {
+            seconds = 0;
+        }
+
+        return TimeSpan.FromSeconds(seconds);
     }
 
     private static readonly string[] DefaultProviders = ["edocat", "alfresco", "fso"];
