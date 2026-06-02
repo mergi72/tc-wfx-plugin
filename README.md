@@ -7,6 +7,14 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 - CI workflow: `.github/workflows/ci.yml` (restore, build, test on push/PR)
 - Release artifact workflow: `.github/workflows/release-artifact.yml` (manual run or tag `v*`)
 
+## Release Notes
+
+- See `CHANGELOG.md` for release history and `v0.1.0` notes.
+
+## License
+
+- MIT (`LICENSE`)
+
 ## Structure
 
 - `src/TcWfxPlugin/Contracts/` - request/response DTO contracts aligned with bridge endpoints
