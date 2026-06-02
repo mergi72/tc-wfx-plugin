@@ -11,6 +11,7 @@ namespace TcWfxPlugin.Contracts;
 [JsonSerializable(typeof(WfxPathRequest))]
 [JsonSerializable(typeof(WfxMoveRequest))]
 [JsonSerializable(typeof(WfxUploadRequest))]
+[JsonSerializable(typeof(BridgeHealthResponse))]
 [JsonSerializable(typeof(WfxItemDto))]
 [JsonSerializable(typeof(WfxListingData))]
 [JsonSerializable(typeof(WfxProvidersData))]

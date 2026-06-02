@@ -10,8 +10,14 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
 {
     private static readonly BridgeJsonSerializerContext SerializerContext = BridgeJsonSerializerContext.Default;
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
+    private const string MinimumBridgeVersionEnvVar = "TC_WFX_MIN_BRIDGE_VERSION";
+    private const string DefaultMinimumBridgeVersion = "0.2.0";
 
     private readonly HttpClient _httpClient;
+    private readonly string _minimumBridgeVersion;
+    private readonly SemaphoreSlim _compatibilityGate = new(1, 1);
+    private int _compatibilityState;
+    private string _compatibilityError = string.Empty;
 
     public string BaseUrl => _httpClient.BaseAddress?.ToString() ?? string.Empty;
 
@@ -23,6 +29,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
     public WfxBridgeClient(HttpClient httpClient)
     {
         _httpClient = httpClient;
+        _minimumBridgeVersion = ResolveMinimumBridgeVersion();
     }
 
     public Task<WfxResponse<WfxProvidersData>> GetProvidersAsync(CancellationToken cancellationToken = default)
@@ -143,6 +150,12 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         JsonTypeInfo<WfxResponse<TData>> responseTypeInfo,
         CancellationToken cancellationToken)
     {
+        var compatibilityError = await EnsureBridgeCompatibilityAsync(cancellationToken);
+        if (compatibilityError is not null)
+        {
+            return WfxResponse<TData>.Failed(compatibilityError, 426);
+        }
+
         using var content = JsonContent.Create(payload, requestTypeInfo);
         using var response = await _httpClient.PostAsync(route, content, cancellationToken);
         return await ParseResponseAsync(response, responseTypeInfo, cancellationToken);
@@ -153,8 +166,98 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         JsonTypeInfo<WfxResponse<TData>> responseTypeInfo,
         CancellationToken cancellationToken)
     {
+        var compatibilityError = await EnsureBridgeCompatibilityAsync(cancellationToken);
+        if (compatibilityError is not null)
+        {
+            return WfxResponse<TData>.Failed(compatibilityError, 426);
+        }
+
         using var response = await _httpClient.GetAsync(route, cancellationToken);
         return await ParseResponseAsync(response, responseTypeInfo, cancellationToken);
+    }
+
+    private async Task<string?> EnsureBridgeCompatibilityAsync(CancellationToken cancellationToken)
+    {
+        if (_compatibilityState == 1)
+        {
+            return null;
+        }
+
+        if (_compatibilityState == -1)
+        {
+            return _compatibilityError;
+        }
+
+        await _compatibilityGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_compatibilityState == 1)
+            {
+                return null;
+            }
+
+            if (_compatibilityState == -1)
+            {
+                return _compatibilityError;
+            }
+
+            BridgeHealthResponse health;
+            try
+            {
+                health = await GetBridgeHealthAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _compatibilityState = -1;
+                _compatibilityError = $"Bridge compatibility check failed: unable to read health endpoint ({ex.Message}).";
+                return _compatibilityError;
+            }
+
+            if (!BridgeVersionCompatibility.IsSupported(health.Version, _minimumBridgeVersion, out var reason))
+            {
+                _compatibilityState = -1;
+                _compatibilityError =
+                    $"Unsupported bridge version '{health.Version}'. Minimum required version is '{_minimumBridgeVersion}'. {reason}";
+                return _compatibilityError;
+            }
+
+            _compatibilityState = 1;
+            return null;
+        }
+        finally
+        {
+            _compatibilityGate.Release();
+        }
+    }
+
+    private async Task<BridgeHealthResponse> GetBridgeHealthAsync(CancellationToken cancellationToken)
+    {
+        using var response = await _httpClient.GetAsync("health", cancellationToken);
+        var rawBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"HTTP {(int)response.StatusCode}: {rawBody}");
+        }
+
+        if (string.IsNullOrWhiteSpace(rawBody))
+        {
+            throw new InvalidOperationException("Bridge health response body is empty.");
+        }
+
+        var parsed = JsonSerializer.Deserialize(rawBody, SerializerContext.BridgeHealthResponse);
+        if (parsed is null)
+        {
+            throw new InvalidOperationException("Bridge health response could not be parsed.");
+        }
+
+        return parsed;
+    }
+
+    private static string ResolveMinimumBridgeVersion()
+    {
+        var configured = Environment.GetEnvironmentVariable(MinimumBridgeVersionEnvVar);
+        return string.IsNullOrWhiteSpace(configured) ? DefaultMinimumBridgeVersion : configured.Trim();
     }
 
     private static async Task<WfxResponse<TData>> ParseResponseAsync<TData>(
