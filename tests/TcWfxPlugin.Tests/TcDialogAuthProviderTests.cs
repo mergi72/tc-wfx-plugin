@@ -131,8 +131,8 @@ public sealed class TcDialogAuthProviderTests
             };
 
             var provider = new TcDialogAuthProvider(
-                (_, _, _) => throw new InvalidOperationException("Prompt should not be used when credential store has values."),
-                (_, _) => false,
+                (_, _, _) => throw new InvalidOperationException("Prompt should not be used when stored credentials are accepted."),
+                (_, _) => true,
                 store,
                 "tc-wfx/bridge");
 
@@ -141,6 +141,47 @@ public sealed class TcDialogAuthProviderTests
             Assert.Equal("credentials", auth.Mode);
             Assert.Equal("stored-user", auth.Username);
             Assert.Equal("stored-pass", auth.Password);
+            Assert.False(store.WasDeleted);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", oldMode);
+            Environment.SetEnvironmentVariable("TC_WFX_USERNAME", oldUser);
+            Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", oldPassword);
+        }
+    }
+
+    [Fact]
+    public void GetAuthContext_CredentialsMode_DeclineStoredCredentials_DeletesAndPromptsAgain()
+    {
+        var oldMode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE");
+        var oldUser = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
+        var oldPassword = Environment.GetEnvironmentVariable("TC_WFX_PASSWORD");
+
+        Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", "credentials");
+        Environment.SetEnvironmentVariable("TC_WFX_USERNAME", null);
+        Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", null);
+
+        try
+        {
+            var store = new FakeCredentialStore
+            {
+                ShouldReadSucceed = true,
+                ReadUserName = "stored-user",
+                ReadPassword = "stored-pass",
+            };
+
+            var provider = new TcDialogAuthProvider(
+                (requestType, _, _) => requestType == WfxNativeExports.RequestTypeUserName ? "new-user" : "new-pass",
+                (_, prompt) => !prompt.StartsWith("Use saved", StringComparison.OrdinalIgnoreCase),
+                store,
+                "tc-wfx/bridge");
+
+            var auth = provider.GetAuthContext();
+
+            Assert.Equal("new-user", auth.Username);
+            Assert.Equal("new-pass", auth.Password);
+            Assert.True(store.WasDeleted);
         }
         finally
         {
@@ -157,9 +198,11 @@ public sealed class TcDialogAuthProviderTests
         public string ReadPassword { get; set; } = string.Empty;
 
         public bool WasSaved { get; private set; }
+        public bool WasDeleted { get; private set; }
         public string LastSavedTarget { get; private set; } = string.Empty;
         public string LastSavedUserName { get; private set; } = string.Empty;
         public string LastSavedPassword { get; private set; } = string.Empty;
+        public string LastDeletedTarget { get; private set; } = string.Empty;
 
         public bool TryRead(string target, out string username, out string password)
         {
@@ -174,6 +217,12 @@ public sealed class TcDialogAuthProviderTests
             LastSavedTarget = target;
             LastSavedUserName = username;
             LastSavedPassword = password;
+        }
+
+        public void Delete(string target)
+        {
+            WasDeleted = true;
+            LastDeletedTarget = target;
         }
     }
 }

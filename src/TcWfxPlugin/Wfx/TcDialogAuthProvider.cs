@@ -44,8 +44,19 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                 {
                     if (_credentialStore.TryRead(_credentialTarget, out var storedUsername, out var storedPassword))
                     {
-                        username = string.IsNullOrWhiteSpace(username) ? storedUsername : username;
-                        password = string.IsNullOrWhiteSpace(password) ? storedPassword : password;
+                        var useStored = _requestYesNo(
+                            "Use saved login",
+                            "Use saved credentials for provider bridge?");
+
+                        if (useStored)
+                        {
+                            username = string.IsNullOrWhiteSpace(username) ? storedUsername : username;
+                            password = string.IsNullOrWhiteSpace(password) ? storedPassword : password;
+                        }
+                        else
+                        {
+                            _credentialStore.Delete(_credentialTarget);
+                        }
                     }
                 }
 
@@ -74,6 +85,10 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                     if (remember)
                     {
                         _credentialStore.Save(_credentialTarget, username, password);
+                    }
+                    else
+                    {
+                        _credentialStore.Delete(_credentialTarget);
                     }
                 }
 

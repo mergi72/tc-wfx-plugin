@@ -65,11 +65,19 @@ public sealed class WindowsCredentialStore : ICredentialStore
         }
     }
 
+    public void Delete(string target)
+    {
+        _ = CredDeleteW(target, CredTypeGeneric, 0);
+    }
+
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool CredReadW(string target, uint type, uint reservedFlag, out nint credentialPtr);
 
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool CredWriteW([In] ref CREDENTIALW userCredential, [In] uint flags);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool CredDeleteW(string target, uint type, uint flags);
 
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern void CredFree([In] nint cred);
