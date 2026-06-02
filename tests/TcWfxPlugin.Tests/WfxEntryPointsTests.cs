@@ -79,6 +79,77 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsFindFirst_RootPath_UsesStaleCacheWhenBridgeUnavailable()
+    {
+        Environment.SetEnvironmentVariable("TC_WFX_PROVIDERS_CACHE_SECONDS", "1");
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        try
+        {
+            var bridgeClient = new FakeBridgeClient(new[] { "dynamic-a", "dynamic-b" });
+            var entryPoints = CreateEntryPoints(bridgeClient, () => now);
+
+            var firstResult = entryPoints.FsFindFirst("\\", out var firstHandle, out var firstItem);
+            var firstClose = entryPoints.FsFindClose(firstHandle);
+
+            bridgeClient.FailGetProviders = true;
+            now = now.AddSeconds(5);
+
+            var secondResult = entryPoints.FsFindFirst("\\", out var secondHandle, out var secondItem);
+            var secondClose = entryPoints.FsFindClose(secondHandle);
+
+            Assert.Equal(WfxResultCodes.Success, firstResult);
+            Assert.Equal(WfxResultCodes.Success, secondResult);
+            Assert.Equal(WfxResultCodes.Success, firstClose);
+            Assert.Equal(WfxResultCodes.Success, secondClose);
+            Assert.NotNull(firstItem);
+            Assert.NotNull(secondItem);
+            Assert.Equal("dynamic-a", firstItem.FileName);
+            Assert.Equal("dynamic-a", secondItem.FileName);
+            Assert.Equal(2, bridgeClient.GetProvidersCallCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TC_WFX_PROVIDERS_CACHE_SECONDS", null);
+        }
+    }
+
+    [Fact]
+    public void InvalidateProvidersCache_ForcesNextBridgeFetch()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "dynamic-a", "dynamic-b" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var firstResult = entryPoints.FsFindFirst("\\", out var firstHandle, out var firstItem);
+        var firstClose = entryPoints.FsFindClose(firstHandle);
+
+        bridgeClient.SetProviders(new[] { "new-a", "new-b" });
+
+        var secondResult = entryPoints.FsFindFirst("\\", out var secondHandle, out var secondItem);
+        var secondClose = entryPoints.FsFindClose(secondHandle);
+
+        entryPoints.InvalidateProvidersCache();
+
+        var thirdResult = entryPoints.FsFindFirst("\\", out var thirdHandle, out var thirdItem);
+        var thirdClose = entryPoints.FsFindClose(thirdHandle);
+
+        Assert.Equal(WfxResultCodes.Success, firstResult);
+        Assert.Equal(WfxResultCodes.Success, secondResult);
+        Assert.Equal(WfxResultCodes.Success, thirdResult);
+        Assert.Equal(WfxResultCodes.Success, firstClose);
+        Assert.Equal(WfxResultCodes.Success, secondClose);
+        Assert.Equal(WfxResultCodes.Success, thirdClose);
+
+        Assert.NotNull(firstItem);
+        Assert.NotNull(secondItem);
+        Assert.NotNull(thirdItem);
+        Assert.Equal("dynamic-a", firstItem.FileName);
+        Assert.Equal("dynamic-a", secondItem.FileName);
+        Assert.Equal("new-a", thirdItem.FileName);
+        Assert.Equal(2, bridgeClient.GetProvidersCallCount);
+    }
+
+    [Fact]
     public void FsFindFirst_WildcardPath_MapsToProviderDirectory()
     {
         var entryPoints = CreateEntryPoints();
@@ -126,21 +197,17 @@ public sealed class WfxEntryPointsTests
     private static WfxEntryPoints CreateEntryPoints(string[]? providers = null)
     {
         var bridgeClient = new FakeBridgeClient(providers ?? new[] { "edocat", "alfresco", "fso" });
-        var facade = new WfxPluginFacade(bridgeClient);
-        var authProvider = new StaticAuthProvider(new BridgeAuthContext
-        {
-            Mode = "credentials",
-            Username = "test",
-            Password = "test",
-        });
-
-        var runtime = new WfxPluginRuntime(facade, authProvider);
-        return new WfxEntryPoints(runtime);
+        return CreateEntryPoints(bridgeClient);
     }
 
     private static (WfxEntryPoints EntryPoints, FakeBridgeClient BridgeClient) CreateEntryPointsAndClient(string[] providers)
     {
         var bridgeClient = new FakeBridgeClient(providers);
+        return (CreateEntryPoints(bridgeClient), bridgeClient);
+    }
+
+    private static WfxEntryPoints CreateEntryPoints(FakeBridgeClient bridgeClient, Func<DateTime>? utcNow = null)
+    {
         var facade = new WfxPluginFacade(bridgeClient);
         var authProvider = new StaticAuthProvider(new BridgeAuthContext
         {
@@ -149,14 +216,15 @@ public sealed class WfxEntryPointsTests
             Password = "test",
         });
 
-        var runtime = new WfxPluginRuntime(facade, authProvider);
-        return (new WfxEntryPoints(runtime), bridgeClient);
+        var runtime = new WfxPluginRuntime(facade, authProvider, utcNow);
+        return new WfxEntryPoints(runtime);
     }
 
     private sealed class FakeBridgeClient : IWfxBridgeClient
     {
-        private readonly string[] _providers;
+        private string[] _providers;
         public int GetProvidersCallCount { get; private set; }
+        public bool FailGetProviders { get; set; }
 
         public FakeBridgeClient(string[] providers)
         {
@@ -166,6 +234,12 @@ public sealed class WfxEntryPointsTests
         public Task<WfxResponse<WfxProvidersData>> GetProvidersAsync(CancellationToken cancellationToken = default)
         {
             GetProvidersCallCount++;
+
+            if (FailGetProviders)
+            {
+                throw new InvalidOperationException("Bridge unavailable");
+            }
+
             return Task.FromResult(new WfxResponse<WfxProvidersData>
             {
                 Ok = true,
@@ -175,6 +249,11 @@ public sealed class WfxEntryPointsTests
                     DefaultProvider = _providers.FirstOrDefault(),
                 },
             });
+        }
+
+        public void SetProviders(string[] providers)
+        {
+            _providers = providers;
         }
 
         public Task<WfxResponse<WfxListingData>> ListAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)

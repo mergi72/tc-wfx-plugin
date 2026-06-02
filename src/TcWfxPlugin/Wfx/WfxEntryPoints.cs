@@ -56,4 +56,9 @@ public sealed class WfxEntryPoints
     {
         return _runtime.PutFileAsync(localName, remoteName, overwrite).GetAwaiter().GetResult();
     }
+
+    public void InvalidateProvidersCache()
+    {
+        _runtime.InvalidateRootProvidersCache();
+    }
 }

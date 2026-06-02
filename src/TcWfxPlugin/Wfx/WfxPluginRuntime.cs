@@ -8,6 +8,7 @@ public sealed class WfxPluginRuntime
 {
     private readonly WfxPluginFacade _facade;
     private readonly IWfxAuthProvider _authProvider;
+    private readonly Func<DateTime> _utcNow;
     private readonly Dictionary<int, FindContext> _findContexts = new();
     private readonly object _syncRoot = new();
     private readonly object _rootProvidersCacheLock = new();
@@ -16,11 +17,21 @@ public sealed class WfxPluginRuntime
     private IReadOnlyList<string>? _cachedRootProviders;
     private DateTime _cachedRootProvidersAtUtc;
 
-    public WfxPluginRuntime(WfxPluginFacade facade, IWfxAuthProvider authProvider)
+    public WfxPluginRuntime(WfxPluginFacade facade, IWfxAuthProvider authProvider, Func<DateTime>? utcNow = null)
     {
         _facade = facade;
         _authProvider = authProvider;
+        _utcNow = utcNow ?? (() => DateTime.UtcNow);
         _rootProvidersCacheTtl = ResolveRootProvidersCacheTtl();
+    }
+
+    public void InvalidateRootProvidersCache()
+    {
+        lock (_rootProvidersCacheLock)
+        {
+            _cachedRootProviders = null;
+            _cachedRootProvidersAtUtc = default;
+        }
     }
 
     public async Task<(int ResultCode, int Handle, WfxFindData? FirstItem)> FindFirstAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
@@ -271,7 +282,7 @@ public sealed class WfxPluginRuntime
             return configured;
         }
 
-        var cached = TryGetCachedRootProviders();
+        var cached = TryGetCachedRootProviders(allowStale: false);
         if (cached is not null)
         {
             return cached;
@@ -290,6 +301,12 @@ public sealed class WfxPluginRuntime
         catch
         {
             // Fallback below keeps root listing available even when bridge is temporarily unavailable.
+        }
+
+        var staleCached = TryGetCachedRootProviders(allowStale: true);
+        if (staleCached is not null)
+        {
+            return staleCached;
         }
 
         return DefaultProviders;
@@ -327,9 +344,9 @@ public sealed class WfxPluginRuntime
         return providers;
     }
 
-    private IReadOnlyList<string>? TryGetCachedRootProviders()
+    private IReadOnlyList<string>? TryGetCachedRootProviders(bool allowStale)
     {
-        if (_rootProvidersCacheTtl <= TimeSpan.Zero)
+        if (!allowStale && _rootProvidersCacheTtl <= TimeSpan.Zero)
         {
             return null;
         }
@@ -341,11 +358,13 @@ public sealed class WfxPluginRuntime
                 return null;
             }
 
-            var age = DateTime.UtcNow - _cachedRootProvidersAtUtc;
-            if (age > _rootProvidersCacheTtl)
+            if (!allowStale)
             {
-                _cachedRootProviders = null;
-                return null;
+                var age = _utcNow() - _cachedRootProvidersAtUtc;
+                if (age > _rootProvidersCacheTtl)
+                {
+                    return null;
+                }
             }
 
             return _cachedRootProviders;
@@ -362,7 +381,7 @@ public sealed class WfxPluginRuntime
         lock (_rootProvidersCacheLock)
         {
             _cachedRootProviders = providers.ToArray();
-            _cachedRootProvidersAtUtc = DateTime.UtcNow;
+            _cachedRootProvidersAtUtc = _utcNow();
         }
     }
 

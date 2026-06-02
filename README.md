@@ -33,6 +33,8 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 - `TotalCommanderPathMapper` translates Total Commander-style paths (`\provider\path`) to bridge provider paths (`provider:/path`).
 - Root listing (`\` and `\*.*`) is served as provider folders resolved dynamically from `GET /bridge/wfx/providers`.
 - Wildcard listing masks in paths (for example `\edocat\folder\*.*`) are normalized to directory provider paths.
+- Root provider list is cached with TTL to reduce bridge calls during panel navigation.
+- On bridge fetch failure, last known cached provider list is reused (stale fallback) before default fallback is used.
 
 ## Native Exports
 
@@ -58,6 +60,8 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 - `TC_WFX_TOKEN`
 - `TC_WFX_PROVIDERS` (optional comma/semicolon-separated root provider override; when missing, providers are resolved from bridge, then fallback to `edocat,alfresco,fso`)
 - `TC_WFX_PROVIDERS_CACHE_SECONDS` (optional TTL for cached root providers loaded from bridge; default `30`, `0` disables cache)
+
+Cache can also be invalidated explicitly through `WfxEntryPoints.InvalidateProvidersCache()`.
 
 ## Bridge Endpoints Targeted
 
