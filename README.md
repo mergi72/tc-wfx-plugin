@@ -65,6 +65,7 @@ Cache can also be invalidated explicitly through `WfxEntryPoints.InvalidateProvi
 
 ## Bridge Endpoints Targeted
 
+- `GET /bridge/wfx/providers`
 - `POST /bridge/wfx/list`
 - `POST /bridge/wfx/stat`
 - `POST /bridge/wfx/mkdir`
