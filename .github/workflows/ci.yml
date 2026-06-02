@@ -74,3 +74,27 @@ jobs:
         if: steps.token.outputs.has_token == 'true'
         shell: pwsh
         run: ./scripts/run-bridge-smoke.ps1 -BridgeRepoPath ./edocat-bridge
+
+  protection-gate:
+    if: always()
+    needs:
+      - build-and-test
+      - integration-smoke
+    runs-on: windows-latest
+
+    steps:
+      - name: Evaluate upstream job results
+        shell: pwsh
+        run: |
+          $buildResult = "${{ needs.build-and-test.result }}"
+          $smokeResult = "${{ needs.integration-smoke.result }}"
+
+          if ($buildResult -ne "success") {
+            throw "build-and-test must be successful (actual: $buildResult)."
+          }
+
+          if ($smokeResult -ne "success" -and $smokeResult -ne "skipped") {
+            throw "integration-smoke must be successful or skipped (actual: $smokeResult)."
+          }
+
+          Write-Host "protection-gate passed (build-and-test=$buildResult, integration-smoke=$smokeResult)."
