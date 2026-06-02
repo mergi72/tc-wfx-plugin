@@ -25,6 +25,12 @@ public sealed class WfxPluginRuntime
         _listingService.InvalidateRootProvidersCache();
     }
 
+    public void OnReconnect()
+    {
+        _listingService.InvalidateRootProvidersCache();
+        _listingService.InvalidateCapabilitiesCache();
+    }
+
     public async Task<(int ResultCode, int Handle, WfxFindData? FirstItem)> FindFirstAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
     {
         var (resultCode, items) = await _listingService.ResolveItemsAsync(totalCommanderPath, cancellationToken);

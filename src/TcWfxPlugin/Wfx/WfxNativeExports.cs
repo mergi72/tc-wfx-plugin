@@ -31,7 +31,7 @@ public static class WfxNativeExports
                 : Marshal.GetDelegateForFunctionPointer<RequestProcDelegate>(requestProc);
         }
         _ = logProc;
-        _ = EntryPoints.Value;
+        EntryPoints.Value.OnReconnect();
         return 0;
     }
 

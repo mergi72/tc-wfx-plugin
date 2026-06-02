@@ -172,6 +172,100 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
+    public async Task ListingService_Capabilities_AreCachedLongerThanProviderDiscovery()
+    {
+        Environment.SetEnvironmentVariable("TC_WFX_CAPABILITIES_CACHE_SECONDS", "3600");
+
+        try
+        {
+            var client = new FakeBridgeClient
+            {
+                ProvidersResponse = new WfxResponse<WfxProvidersData>
+                {
+                    Ok = true,
+                    Data = new WfxProvidersData
+                    {
+                        Providers = ["edocat"],
+                        DefaultProvider = "edocat",
+                        Capabilities = new Dictionary<string, WfxProviderCapabilities>
+                        {
+                            ["edocat"] = new WfxProviderCapabilities { Download = false },
+                        },
+                    },
+                },
+            };
+
+            var service = CreateListingService(client);
+            var first = await service.ResolveProviderCapabilitiesAsync("edocat");
+            var second = await service.ResolveProviderCapabilitiesAsync("edocat");
+
+            Assert.False(first.Download);
+            Assert.False(second.Download);
+            Assert.Equal(1, client.GetProvidersCallCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TC_WFX_CAPABILITIES_CACHE_SECONDS", null);
+        }
+    }
+
+    [Fact]
+    public async Task ListingService_Capabilities_AreRefetchedAfterReconnectInvalidation()
+    {
+        Environment.SetEnvironmentVariable("TC_WFX_CAPABILITIES_CACHE_SECONDS", "3600");
+
+        try
+        {
+            var client = new FakeBridgeClient
+            {
+                ProvidersResponse = new WfxResponse<WfxProvidersData>
+                {
+                    Ok = true,
+                    Data = new WfxProvidersData
+                    {
+                        Providers = ["edocat"],
+                        DefaultProvider = "edocat",
+                        Capabilities = new Dictionary<string, WfxProviderCapabilities>
+                        {
+                            ["edocat"] = new WfxProviderCapabilities { Download = false },
+                        },
+                    },
+                },
+            };
+
+            var service = CreateListingService(client);
+            var first = await service.ResolveProviderCapabilitiesAsync("edocat");
+
+            client.ProvidersResponse = new WfxResponse<WfxProvidersData>
+            {
+                Ok = true,
+                Data = new WfxProvidersData
+                {
+                    Providers = ["edocat"],
+                    DefaultProvider = "edocat",
+                    Capabilities = new Dictionary<string, WfxProviderCapabilities>
+                    {
+                        ["edocat"] = new WfxProviderCapabilities { Download = true },
+                    },
+                },
+            };
+
+            var cached = await service.ResolveProviderCapabilitiesAsync("edocat");
+            service.InvalidateCapabilitiesCache();
+            var refreshed = await service.ResolveProviderCapabilitiesAsync("edocat");
+
+            Assert.False(first.Download);
+            Assert.False(cached.Download);
+            Assert.True(refreshed.Download);
+            Assert.Equal(2, client.GetProvidersCallCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TC_WFX_CAPABILITIES_CACHE_SECONDS", null);
+        }
+    }
+
+    [Fact]
     public async Task TransferService_GetFile_InvalidBase64_ReturnsReadError()
     {
         var client = new FakeBridgeClient

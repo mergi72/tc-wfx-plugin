@@ -45,4 +45,17 @@ public sealed class WfxProvidersData
 {
     public required IReadOnlyList<string> Providers { get; init; }
     public string? DefaultProvider { get; init; }
+    public Dictionary<string, WfxProviderCapabilities>? Capabilities { get; init; }
+}
+
+public sealed class WfxProviderCapabilities
+{
+    public bool List { get; init; } = true;
+    public bool Stat { get; init; } = true;
+    public bool Mkdir { get; init; } = true;
+    public bool Delete { get; init; } = true;
+    public bool Rename { get; init; } = true;
+    public bool Copy { get; init; } = true;
+    public bool Download { get; init; } = true;
+    public bool Upload { get; init; } = true;
 }

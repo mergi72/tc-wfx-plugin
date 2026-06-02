@@ -1,4 +1,5 @@
 using TcWfxPlugin.Core;
+using TcWfxPlugin.Contracts;
 
 namespace TcWfxPlugin.Wfx;
 
@@ -10,9 +11,13 @@ internal sealed class WfxListingService
     private readonly IWfxAuthProvider _authProvider;
     private readonly Func<DateTime> _utcNow;
     private readonly object _rootProvidersCacheLock = new();
+    private readonly object _capabilitiesCacheLock = new();
     private readonly TimeSpan _rootProvidersCacheTtl;
+    private readonly TimeSpan _capabilitiesCacheTtl;
     private IReadOnlyList<string>? _cachedRootProviders;
     private DateTime _cachedRootProvidersAtUtc;
+    private IReadOnlyDictionary<string, WfxProviderCapabilities>? _cachedCapabilities;
+    private DateTime _cachedCapabilitiesAtUtc;
 
     public WfxListingService(WfxPluginFacade facade, IWfxAuthProvider authProvider, Func<DateTime> utcNow)
     {
@@ -20,6 +25,7 @@ internal sealed class WfxListingService
         _authProvider = authProvider;
         _utcNow = utcNow;
         _rootProvidersCacheTtl = ResolveRootProvidersCacheTtl();
+        _capabilitiesCacheTtl = ResolveCapabilitiesCacheTtl();
     }
 
     public void InvalidateRootProvidersCache()
@@ -29,6 +35,50 @@ internal sealed class WfxListingService
             _cachedRootProviders = null;
             _cachedRootProvidersAtUtc = default;
         }
+    }
+
+    public void InvalidateCapabilitiesCache()
+    {
+        lock (_capabilitiesCacheLock)
+        {
+            _cachedCapabilities = null;
+            _cachedCapabilitiesAtUtc = default;
+        }
+    }
+
+    public async Task<WfxProviderCapabilities> ResolveProviderCapabilitiesAsync(string provider, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(provider))
+        {
+            return CreateDefaultCapabilities();
+        }
+
+        var providerKey = provider.Trim();
+        var cached = TryGetCachedCapability(providerKey, allowStale: false);
+        if (cached is not null)
+        {
+            return cached;
+        }
+
+        try
+        {
+            var response = await _facade.GetProvidersAsync(cancellationToken);
+            var capabilities = response.Data?.Capabilities;
+            if (response.Ok && capabilities is not null && capabilities.Count > 0)
+            {
+                CacheCapabilities(capabilities);
+
+                var resolved = TryGetCachedCapability(providerKey, allowStale: true);
+                return resolved ?? CreateDefaultCapabilities();
+            }
+        }
+        catch
+        {
+            // Fallback below keeps behavior stable when bridge capability discovery is unavailable.
+        }
+
+        var stale = TryGetCachedCapability(providerKey, allowStale: true);
+        return stale ?? CreateDefaultCapabilities();
     }
 
     public async Task<(int ResultCode, WfxFindData[] Items)> ResolveItemsAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
@@ -82,9 +132,15 @@ internal sealed class WfxListingService
         {
             var response = await _facade.GetProvidersAsync(cancellationToken);
             var providers = response.Data?.Providers;
+            var capabilities = response.Data?.Capabilities;
             if (response.Ok && providers is not null && providers.Count > 0)
             {
                 CacheRootProviders(providers);
+                if (capabilities is not null && capabilities.Count > 0)
+                {
+                    CacheCapabilities(capabilities);
+                }
+
                 return providers;
             }
         }
@@ -186,12 +242,71 @@ internal sealed class WfxListingService
         }
     }
 
+    private WfxProviderCapabilities? TryGetCachedCapability(string provider, bool allowStale)
+    {
+        lock (_capabilitiesCacheLock)
+        {
+            if (_cachedCapabilities is null)
+            {
+                return null;
+            }
+
+            if (!allowStale)
+            {
+                if (_capabilitiesCacheTtl <= TimeSpan.Zero)
+                {
+                    return null;
+                }
+
+                var age = _utcNow() - _cachedCapabilitiesAtUtc;
+                if (age > _capabilitiesCacheTtl)
+                {
+                    return null;
+                }
+            }
+
+            return _cachedCapabilities.TryGetValue(provider, out var direct)
+                ? direct
+                : _cachedCapabilities.FirstOrDefault(entry => string.Equals(entry.Key, provider, StringComparison.OrdinalIgnoreCase)).Value;
+        }
+    }
+
+    private void CacheCapabilities(IReadOnlyDictionary<string, WfxProviderCapabilities> capabilities)
+    {
+        lock (_capabilitiesCacheLock)
+        {
+            _cachedCapabilities = new Dictionary<string, WfxProviderCapabilities>(capabilities, StringComparer.OrdinalIgnoreCase);
+            _cachedCapabilitiesAtUtc = _utcNow();
+        }
+    }
+
+    private static WfxProviderCapabilities CreateDefaultCapabilities()
+    {
+        return new WfxProviderCapabilities();
+    }
+
     private static TimeSpan ResolveRootProvidersCacheTtl()
     {
         var raw = Environment.GetEnvironmentVariable("TC_WFX_PROVIDERS_CACHE_SECONDS");
         if (!int.TryParse(raw, out var seconds))
         {
             seconds = 30;
+        }
+
+        if (seconds < 0)
+        {
+            seconds = 0;
+        }
+
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static TimeSpan ResolveCapabilitiesCacheTtl()
+    {
+        var raw = Environment.GetEnvironmentVariable("TC_WFX_CAPABILITIES_CACHE_SECONDS");
+        if (!int.TryParse(raw, out var seconds))
+        {
+            seconds = 900;
         }
 
         if (seconds < 0)
