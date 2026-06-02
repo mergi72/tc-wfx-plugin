@@ -169,7 +169,11 @@ public static class WfxNativeExports
     private static WfxEntryPoints CreateEntryPoints()
     {
         var baseUrl = Environment.GetEnvironmentVariable("TC_WFX_BRIDGE_URL") ?? "http://127.0.0.1:8765/";
-        var authProvider = new TcDialogAuthProvider(TryRequestValue);
+        var authProvider = new TcDialogAuthProvider(
+            TryRequestValue,
+            TryConfirmYesNo,
+            new WindowsCredentialStore(),
+            "tc-wfx/bridge");
         var client = new WfxBridgeClient(baseUrl);
         var facade = new WfxPluginFacade(client);
         var runtime = new WfxPluginRuntime(facade, authProvider);
@@ -246,6 +250,49 @@ public static class WfxNativeExports
         {
             titlePtr = Marshal.StringToHGlobalUni("Overwrite existing file");
             textPtr = Marshal.StringToHGlobalUni($"File already exists:\n{localPath}\n\nOverwrite it?");
+            var result = requestProc(pluginNumber, RequestTypeMsgYesNo, titlePtr, textPtr, nint.Zero, 0);
+            return result != 0;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            if (titlePtr != nint.Zero)
+            {
+                Marshal.FreeHGlobal(titlePtr);
+            }
+
+            if (textPtr != nint.Zero)
+            {
+                Marshal.FreeHGlobal(textPtr);
+            }
+        }
+    }
+
+    private static bool TryConfirmYesNo(string title, string text)
+    {
+        RequestProcDelegate? requestProc;
+        int pluginNumber;
+
+        lock (CallbackSyncRoot)
+        {
+            requestProc = _requestProc;
+            pluginNumber = _pluginNumber;
+        }
+
+        if (requestProc is null)
+        {
+            return false;
+        }
+
+        nint titlePtr = nint.Zero;
+        nint textPtr = nint.Zero;
+        try
+        {
+            titlePtr = Marshal.StringToHGlobalUni(title);
+            textPtr = Marshal.StringToHGlobalUni(text);
             var result = requestProc(pluginNumber, RequestTypeMsgYesNo, titlePtr, textPtr, nint.Zero, 0);
             return result != 0;
         }
