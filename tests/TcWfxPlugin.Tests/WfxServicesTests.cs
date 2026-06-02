@@ -273,6 +273,69 @@ public sealed class WfxServicesTests
         Assert.Equal(WfxResultCodes.AccessDenied, result);
     }
 
+    [Fact]
+    public async Task Runtime_GetFileAsync_WhenCanceled_ReturnsUserAbort()
+    {
+        var client = new FakeBridgeClient
+        {
+            BlockDownloadUntilCanceled = true,
+        };
+
+        var runtime = CreateRuntime(client);
+        var target = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.bin");
+
+        try
+        {
+            var transferTask = runtime.GetFileAsync("\\edocat\\file.bin", target);
+            await client.WaitForDownloadStartAsync();
+
+            runtime.CancelCurrentTransfer();
+            var result = await transferTask;
+
+            Assert.Equal(WfxResultCodes.UserAbort, result);
+        }
+        finally
+        {
+            if (File.Exists(target))
+            {
+                File.Delete(target);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Runtime_GetFileAsync_ReportsTransferProgress()
+    {
+        var client = new FakeBridgeClient
+        {
+            DownloadResponse = JsonResponse(true, "{\"content_base64\":\"aGVsbG8=\"}"),
+        };
+
+        var runtime = CreateRuntime(client);
+        var progressEvents = new List<WfxTransferProgress>();
+        runtime.TransferProgressChanged += progress => progressEvents.Add(progress);
+
+        var target = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}", "hello.txt");
+
+        try
+        {
+            var result = await runtime.GetFileAsync("\\edocat\\hello.txt", target);
+
+            Assert.Equal(WfxResultCodes.Success, result);
+            Assert.NotEmpty(progressEvents);
+            Assert.Contains(progressEvents, evt => evt.Operation == "download" && evt.BytesTransferred == 0 && evt.IsCompleted == false);
+            Assert.Contains(progressEvents, evt => evt.Operation == "download" && evt.IsCompleted == true && evt.BytesTransferred == 5);
+        }
+        finally
+        {
+            var parent = Path.GetDirectoryName(target);
+            if (!string.IsNullOrWhiteSpace(parent) && Directory.Exists(parent))
+            {
+                Directory.Delete(parent, recursive: true);
+            }
+        }
+    }
+
     private static WfxListingService CreateListingService(FakeBridgeClient bridgeClient)
     {
         var facade = new WfxPluginFacade(bridgeClient);
@@ -283,6 +346,12 @@ public sealed class WfxServicesTests
     {
         var facade = new WfxPluginFacade(bridgeClient);
         return new WfxTransferService(facade, CreateAuthProvider());
+    }
+
+    private static WfxPluginRuntime CreateRuntime(FakeBridgeClient bridgeClient)
+    {
+        var facade = new WfxPluginFacade(bridgeClient);
+        return new WfxPluginRuntime(facade, CreateAuthProvider(), () => DateTime.UtcNow);
     }
 
     private static StaticAuthProvider CreateAuthProvider()
@@ -364,6 +433,8 @@ public sealed class WfxServicesTests
         public string? LastUploadFileName { get; private set; }
         public string? LastUploadContentBase64 { get; private set; }
         public bool LastUploadOverwrite { get; private set; }
+        public bool BlockDownloadUntilCanceled { get; set; }
+        private readonly TaskCompletionSource<bool> _downloadStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task<WfxResponse<WfxProvidersData>> GetProvidersAsync(CancellationToken cancellationToken = default)
         {
@@ -389,8 +460,21 @@ public sealed class WfxServicesTests
         public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)
             => Task.FromResult(CopyResponse);
 
-        public Task<WfxResponse<JsonElement>> DownloadAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
-            => Task.FromResult(DownloadResponse);
+        public async Task<WfxResponse<JsonElement>> DownloadAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
+        {
+            if (BlockDownloadUntilCanceled)
+            {
+                _downloadStarted.TrySetResult(true);
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+
+            return DownloadResponse;
+        }
+
+        public Task WaitForDownloadStartAsync()
+        {
+            return _downloadStarted.Task;
+        }
 
         public Task<WfxResponse<JsonElement>> UploadAsync(string destination, string fileName, BridgeAuthContext auth, string? contentBase64, bool overwrite, CancellationToken cancellationToken = default)
         {

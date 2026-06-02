@@ -5,6 +5,10 @@ public sealed class WfxPluginRuntime
     private readonly WfxListingService _listingService;
     private readonly WfxTransferService _transferService;
     private readonly WfxContextManager _contextManager;
+    private readonly object _transferSyncRoot = new();
+    private CancellationTokenSource? _activeTransferCts;
+
+    public event Action<WfxTransferProgress>? TransferProgressChanged;
 
     public WfxPluginRuntime(WfxPluginFacade facade, IWfxAuthProvider authProvider, Func<DateTime>? utcNow = null)
     {
@@ -43,31 +47,87 @@ public sealed class WfxPluginRuntime
 
     public async Task<int> MkDirAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
     {
-        return await _transferService.MkDirAsync(totalCommanderPath, cancellationToken);
+        return await RunTransferAsync(
+            (_, ct) => _transferService.MkDirAsync(totalCommanderPath, ct),
+            cancellationToken);
     }
 
     public async Task<int> DeleteAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
     {
-        return await _transferService.DeleteAsync(totalCommanderPath, cancellationToken);
+        return await RunTransferAsync(
+            (_, ct) => _transferService.DeleteAsync(totalCommanderPath, ct),
+            cancellationToken);
     }
 
     public async Task<int> RenameAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, CancellationToken cancellationToken = default)
     {
-        return await _transferService.RenameAsync(totalCommanderSourcePath, totalCommanderDestinationPath, cancellationToken);
+        return await RunTransferAsync(
+            (_, ct) => _transferService.RenameAsync(totalCommanderSourcePath, totalCommanderDestinationPath, ct),
+            cancellationToken);
     }
 
     public async Task<int> CopyAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, CancellationToken cancellationToken = default)
     {
-        return await _transferService.CopyAsync(totalCommanderSourcePath, totalCommanderDestinationPath, cancellationToken);
+        return await RunTransferAsync(
+            (_, ct) => _transferService.CopyAsync(totalCommanderSourcePath, totalCommanderDestinationPath, ct),
+            cancellationToken);
     }
 
     public async Task<int> GetFileAsync(string totalCommanderSourcePath, string localTargetPath, CancellationToken cancellationToken = default)
     {
-        return await _transferService.GetFileAsync(totalCommanderSourcePath, localTargetPath, cancellationToken);
+        return await RunTransferAsync(
+            (progress, ct) => _transferService.GetFileAsync(totalCommanderSourcePath, localTargetPath, progress, ct),
+            cancellationToken);
     }
 
     public async Task<int> PutFileAsync(string localSourcePath, string totalCommanderDestinationPath, bool overwrite, CancellationToken cancellationToken = default)
     {
-        return await _transferService.PutFileAsync(localSourcePath, totalCommanderDestinationPath, overwrite, cancellationToken);
+        return await RunTransferAsync(
+            (progress, ct) => _transferService.PutFileAsync(localSourcePath, totalCommanderDestinationPath, overwrite, progress, ct),
+            cancellationToken);
+    }
+
+    public void CancelCurrentTransfer()
+    {
+        lock (_transferSyncRoot)
+        {
+            _activeTransferCts?.Cancel();
+        }
+    }
+
+    private async Task<int> RunTransferAsync(
+        Func<IProgress<WfxTransferProgress>, CancellationToken, Task<int>> transfer,
+        CancellationToken cancellationToken)
+    {
+        CancellationTokenSource transferCts;
+        lock (_transferSyncRoot)
+        {
+            _activeTransferCts?.Cancel();
+            _activeTransferCts?.Dispose();
+            _activeTransferCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            transferCts = _activeTransferCts;
+        }
+
+        try
+        {
+            var progress = new Progress<WfxTransferProgress>(value => TransferProgressChanged?.Invoke(value));
+            return await transfer(progress, transferCts.Token);
+        }
+        catch (OperationCanceledException) when (transferCts.IsCancellationRequested)
+        {
+            return WfxResultCodes.UserAbort;
+        }
+        finally
+        {
+            lock (_transferSyncRoot)
+            {
+                if (ReferenceEquals(_activeTransferCts, transferCts))
+                {
+                    _activeTransferCts = null;
+                }
+            }
+
+            transferCts.Dispose();
+        }
     }
 }

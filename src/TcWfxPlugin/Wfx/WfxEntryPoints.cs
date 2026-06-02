@@ -61,4 +61,9 @@ public sealed class WfxEntryPoints
     {
         _runtime.InvalidateRootProvidersCache();
     }
+
+    public void CancelCurrentTransfer()
+    {
+        _runtime.CancelCurrentTransfer();
+    }
 }
