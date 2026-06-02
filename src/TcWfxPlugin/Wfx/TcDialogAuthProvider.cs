@@ -39,24 +39,14 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                 var username = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
                 var password = Environment.GetEnvironmentVariable("TC_WFX_PASSWORD");
                 var token = Environment.GetEnvironmentVariable("TC_WFX_TOKEN");
+                var promptedForCredentials = false;
 
                 if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
                 {
                     if (_credentialStore.TryRead(_credentialTarget, out var storedUsername, out var storedPassword))
                     {
-                        var useStored = _requestYesNo(
-                            "Use saved login",
-                            "Use saved credentials for provider bridge?");
-
-                        if (useStored)
-                        {
-                            username = string.IsNullOrWhiteSpace(username) ? storedUsername : username;
-                            password = string.IsNullOrWhiteSpace(password) ? storedPassword : password;
-                        }
-                        else
-                        {
-                            _credentialStore.Delete(_credentialTarget);
-                        }
+                        username = string.IsNullOrWhiteSpace(username) ? storedUsername : username;
+                        password = string.IsNullOrWhiteSpace(password) ? storedPassword : password;
                     }
                 }
 
@@ -66,6 +56,7 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                         WfxNativeExports.RequestTypeUserName,
                         "Provider login",
                         "User name:");
+                    promptedForCredentials = true;
                 }
 
                 if (string.IsNullOrWhiteSpace(password))
@@ -74,9 +65,10 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                         WfxNativeExports.RequestTypePassword,
                         "Provider login",
                         "Password:");
+                    promptedForCredentials = true;
                 }
 
-                if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                if (promptedForCredentials && !string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
                 {
                     var remember = _requestYesNo(
                         "Remember login",

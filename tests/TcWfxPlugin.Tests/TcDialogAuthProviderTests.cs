@@ -132,7 +132,7 @@ public sealed class TcDialogAuthProviderTests
 
             var provider = new TcDialogAuthProvider(
                 (_, _, _) => throw new InvalidOperationException("Prompt should not be used when stored credentials are accepted."),
-                (_, _) => true,
+                (_, _) => throw new InvalidOperationException("Yes/No prompt should not be used when stored credentials exist."),
                 store,
                 "tc-wfx/bridge");
 
@@ -142,46 +142,6 @@ public sealed class TcDialogAuthProviderTests
             Assert.Equal("stored-user", auth.Username);
             Assert.Equal("stored-pass", auth.Password);
             Assert.False(store.WasDeleted);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", oldMode);
-            Environment.SetEnvironmentVariable("TC_WFX_USERNAME", oldUser);
-            Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", oldPassword);
-        }
-    }
-
-    [Fact]
-    public void GetAuthContext_CredentialsMode_DeclineStoredCredentials_DeletesAndPromptsAgain()
-    {
-        var oldMode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE");
-        var oldUser = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
-        var oldPassword = Environment.GetEnvironmentVariable("TC_WFX_PASSWORD");
-
-        Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", "credentials");
-        Environment.SetEnvironmentVariable("TC_WFX_USERNAME", null);
-        Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", null);
-
-        try
-        {
-            var store = new FakeCredentialStore
-            {
-                ShouldReadSucceed = true,
-                ReadUserName = "stored-user",
-                ReadPassword = "stored-pass",
-            };
-
-            var provider = new TcDialogAuthProvider(
-                (requestType, _, _) => requestType == WfxNativeExports.RequestTypeUserName ? "new-user" : "new-pass",
-                (_, prompt) => !prompt.StartsWith("Use saved", StringComparison.OrdinalIgnoreCase),
-                store,
-                "tc-wfx/bridge");
-
-            var auth = provider.GetAuthContext();
-
-            Assert.Equal("new-user", auth.Username);
-            Assert.Equal("new-pass", auth.Password);
-            Assert.True(store.WasDeleted);
         }
         finally
         {
