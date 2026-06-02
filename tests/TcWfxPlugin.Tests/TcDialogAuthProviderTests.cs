@@ -151,6 +151,55 @@ public sealed class TcDialogAuthProviderTests
         }
     }
 
+    [Fact]
+    public void ResetCachedAuth_CredentialsMode_IgnoresStoredCredentialsOnceAndPromptsAgain()
+    {
+        var oldMode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE");
+        var oldUser = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
+        var oldPassword = Environment.GetEnvironmentVariable("TC_WFX_PASSWORD");
+
+        Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", "credentials");
+        Environment.SetEnvironmentVariable("TC_WFX_USERNAME", null);
+        Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", null);
+
+        try
+        {
+            var store = new FakeCredentialStore
+            {
+                ShouldReadSucceed = true,
+                ReadUserName = "stored-user",
+                ReadPassword = "stored-pass",
+            };
+
+            var requestCalls = 0;
+            var provider = new TcDialogAuthProvider(
+                (requestType, _, _) =>
+                {
+                    requestCalls++;
+                    return requestType == WfxNativeExports.RequestTypeUserName ? "prompt-user" : "prompt-pass";
+                },
+                (_, _) => false,
+                store,
+                "tc-wfx/bridge");
+
+            var first = provider.GetAuthContext();
+            provider.ResetCachedAuth();
+            var second = provider.GetAuthContext();
+
+            Assert.Equal("stored-user", first.Username);
+            Assert.Equal("stored-pass", first.Password);
+            Assert.Equal("prompt-user", second.Username);
+            Assert.Equal("prompt-pass", second.Password);
+            Assert.Equal(2, requestCalls);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", oldMode);
+            Environment.SetEnvironmentVariable("TC_WFX_USERNAME", oldUser);
+            Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", oldPassword);
+        }
+    }
+
     private sealed class FakeCredentialStore : ICredentialStore
     {
         public bool ShouldReadSucceed { get; set; }

@@ -10,6 +10,7 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
     private readonly string _credentialTarget;
     private readonly object _syncRoot = new();
     private BridgeAuthContext? _cachedAuth;
+    private bool _ignoreStoredCredentialsOnce;
 
     public TcDialogAuthProvider(
         Func<int, string, string, string?> requestValue,
@@ -41,7 +42,7 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                 var token = Environment.GetEnvironmentVariable("TC_WFX_TOKEN");
                 var promptedForCredentials = false;
 
-                if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+                if (!_ignoreStoredCredentialsOnce && (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password)))
                 {
                     if (_credentialStore.TryRead(_credentialTarget, out var storedUsername, out var storedPassword))
                     {
@@ -49,6 +50,8 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                         password = string.IsNullOrWhiteSpace(password) ? storedPassword : password;
                     }
                 }
+
+                _ignoreStoredCredentialsOnce = false;
 
                 if (string.IsNullOrWhiteSpace(username))
                 {
@@ -111,6 +114,7 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
         lock (_syncRoot)
         {
             _cachedAuth = null;
+            _ignoreStoredCredentialsOnce = true;
         }
     }
 }
