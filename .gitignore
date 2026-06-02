@@ -1,5 +1,6 @@
 bin/
 obj/
+TestResults/
 .vs/
 *.user
 *.suo
@@ -9,3 +10,6 @@ obj/
 *.nupkg
 *.dll
 *.exe
+artifacts/
+release/
+dist/
