@@ -6,12 +6,20 @@ namespace TcWfxPlugin.Wfx;
 public static class WfxNativeExports
 {
     private static readonly Lazy<WfxEntryPoints> EntryPoints = new(CreateEntryPoints);
+    private static readonly object CallbackSyncRoot = new();
+    private static int _pluginNumber;
+    private static ProgressProcDelegate? _progressProc;
 
     [UnmanagedCallersOnly(EntryPoint = "FsInitW")]
     public static int FsInitW(int pluginNr, nint progressProc, nint logProc, nint requestProc)
     {
-        _ = pluginNr;
-        _ = progressProc;
+        lock (CallbackSyncRoot)
+        {
+            _pluginNumber = pluginNr;
+            _progressProc = progressProc == nint.Zero
+                ? null
+                : Marshal.GetDelegateForFunctionPointer<ProgressProcDelegate>(progressProc);
+        }
         _ = logProc;
         _ = requestProc;
         _ = EntryPoints.Value;
@@ -122,8 +130,59 @@ public static class WfxNativeExports
         var client = new WfxBridgeClient(baseUrl);
         var facade = new WfxPluginFacade(client);
         var runtime = new WfxPluginRuntime(facade, authProvider);
+        runtime.TransferProgressChanged += OnTransferProgressChanged;
         return new WfxEntryPoints(runtime);
     }
+
+    private static void OnTransferProgressChanged(WfxTransferProgress progress)
+    {
+        ProgressProcDelegate? progressProc;
+        lock (CallbackSyncRoot)
+        {
+            progressProc = _progressProc;
+        }
+
+        if (progressProc is null)
+        {
+            return;
+        }
+
+        var percentDone = 0;
+        if (progress.TotalBytes is long total && total > 0)
+        {
+            var rawPercent = (progress.BytesTransferred * 100L) / total;
+            percentDone = (int)Math.Clamp(rawPercent, 0, 100);
+        }
+
+        nint sourcePtr = nint.Zero;
+        nint destinationPtr = nint.Zero;
+        try
+        {
+            sourcePtr = Marshal.StringToHGlobalUni(progress.SourcePath);
+            destinationPtr = Marshal.StringToHGlobalUni(progress.DestinationPath);
+
+            var callbackResult = progressProc(_pluginNumber, sourcePtr, destinationPtr, percentDone);
+            if (callbackResult != 0)
+            {
+                EntryPoints.Value.CancelCurrentTransfer();
+            }
+        }
+        finally
+        {
+            if (sourcePtr != nint.Zero)
+            {
+                Marshal.FreeHGlobal(sourcePtr);
+            }
+
+            if (destinationPtr != nint.Zero)
+            {
+                Marshal.FreeHGlobal(destinationPtr);
+            }
+        }
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
+    private delegate int ProgressProcDelegate(int pluginNr, nint sourceName, nint targetName, int percentDone);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct Win32FindDataW
