@@ -26,7 +26,7 @@ if (-not (Test-Path $fsoConfigPath)) {
 $pluginRootPosix = $pluginRoot.Path.Replace("\\", "/")
 $providerPath = "fso:/$pluginRootPosix"
 
-$originalFsoConfig = Get-Content -Raw -Path $fsoConfigPath -Encoding UTF8
+$originalFsoConfigBytes = [System.IO.File]::ReadAllBytes($fsoConfigPath)
 $tempFsoConfig = @{
     key = "fso"
     fso = @{
@@ -37,7 +37,7 @@ $tempFsoConfig = @{
 $serverProcess = $null
 
 try {
-    Set-Content -Path $fsoConfigPath -Value $tempFsoConfig -Encoding UTF8
+    [System.IO.File]::WriteAllText($fsoConfigPath, $tempFsoConfig, [System.Text.UTF8Encoding]::new($false))
 
     Write-Host "Starting bridge server for smoke test..."
     $serverProcess = Start-Process -FilePath $PythonExe -ArgumentList @(
@@ -104,7 +104,7 @@ finally {
         Stop-Process -Id $serverProcess.Id -Force -ErrorAction SilentlyContinue
     }
 
-    if (Test-Path $fsoConfigPath) {
-        Set-Content -Path $fsoConfigPath -Value $originalFsoConfig -Encoding UTF8
+    if ((Test-Path $fsoConfigPath) -and ($null -ne $originalFsoConfigBytes)) {
+        [System.IO.File]::WriteAllBytes($fsoConfigPath, $originalFsoConfigBytes)
     }
 }
