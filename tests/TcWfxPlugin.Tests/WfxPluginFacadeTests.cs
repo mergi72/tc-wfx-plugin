@@ -43,6 +43,19 @@ public sealed class WfxPluginFacadeTests
 
     private sealed class FakeBridgeClient : IWfxBridgeClient
     {
+        public Task<WfxResponse<WfxProvidersData>> GetProvidersAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new WfxResponse<WfxProvidersData>
+            {
+                Ok = true,
+                Data = new WfxProvidersData
+                {
+                    Providers = new[] { "edocat", "alfresco", "fso" },
+                    DefaultProvider = "edocat",
+                },
+            });
+        }
+
         public Task<WfxResponse<WfxListingData>> ListAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new WfxResponse<WfxListingData>

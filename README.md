@@ -31,7 +31,7 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 - `IWfxAuthProvider` decouples credential retrieval from runtime operations.
 - `EnvironmentAuthProvider` loads auth data from environment variables.
 - `TotalCommanderPathMapper` translates Total Commander-style paths (`\provider\path`) to bridge provider paths (`provider:/path`).
-- Root listing (`\` and `\*.*`) is served as provider folders (`edocat`, `alfresco`, `fso`) without bridge roundtrip.
+- Root listing (`\` and `\*.*`) is served as provider folders resolved dynamically from `GET /bridge/wfx/providers`.
 - Wildcard listing masks in paths (for example `\edocat\folder\*.*`) are normalized to directory provider paths.
 
 ## Native Exports
@@ -56,7 +56,7 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 - `TC_WFX_USERNAME`
 - `TC_WFX_PASSWORD`
 - `TC_WFX_TOKEN`
-- `TC_WFX_PROVIDERS` (optional comma/semicolon-separated root provider list, default: `edocat,alfresco,fso`)
+- `TC_WFX_PROVIDERS` (optional comma/semicolon-separated root provider override; when missing, providers are resolved from bridge, then fallback to `edocat,alfresco,fso`)
 
 ## Bridge Endpoints Targeted
 

@@ -27,6 +27,11 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         _httpClient = httpClient;
     }
 
+    public Task<WfxResponse<WfxProvidersData>> GetProvidersAsync(CancellationToken cancellationToken = default)
+    {
+        return GetAsync<WfxProvidersData>("bridge/wfx/providers", cancellationToken);
+    }
+
     public Task<WfxResponse<WfxListingData>> ListAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
     {
         return PostAsync<WfxPathRequest, WfxListingData>(
@@ -120,6 +125,21 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         CancellationToken cancellationToken)
     {
         using var response = await _httpClient.PostAsJsonAsync(route, payload, JsonOptions, cancellationToken);
+        return await ParseResponseAsync<TData>(response, cancellationToken);
+    }
+
+    private async Task<WfxResponse<TData>> GetAsync<TData>(
+        string route,
+        CancellationToken cancellationToken)
+    {
+        using var response = await _httpClient.GetAsync(route, cancellationToken);
+        return await ParseResponseAsync<TData>(response, cancellationToken);
+    }
+
+    private static async Task<WfxResponse<TData>> ParseResponseAsync<TData>(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
         var rawBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (string.IsNullOrWhiteSpace(rawBody))

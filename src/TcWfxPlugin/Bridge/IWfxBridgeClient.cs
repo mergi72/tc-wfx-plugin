@@ -5,6 +5,7 @@ namespace TcWfxPlugin.Bridge;
 
 public interface IWfxBridgeClient
 {
+    Task<WfxResponse<WfxProvidersData>> GetProvidersAsync(CancellationToken cancellationToken = default);
     Task<WfxResponse<WfxListingData>> ListAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default);
     Task<WfxResponse<JsonElement>> StatAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default);
     Task<WfxResponse<JsonElement>> MkdirAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default);

@@ -40,3 +40,9 @@ public sealed class WfxItemDto
     public long? Size { get; init; }
     public string? MimeType { get; init; }
 }
+
+public sealed class WfxProvidersData
+{
+    public required IReadOnlyList<string> Providers { get; init; }
+    public string? DefaultProvider { get; init; }
+}

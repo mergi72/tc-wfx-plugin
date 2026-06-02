@@ -24,7 +24,8 @@ public sealed class WfxPluginRuntime
 
         if (IsRootListingPath(totalCommanderPath))
         {
-            items = BuildRootItems();
+            var providers = await ResolveRootProvidersAsync(cancellationToken);
+            items = BuildRootItems(providers);
         }
         else
         {
@@ -257,9 +258,34 @@ public sealed class WfxPluginRuntime
         return normalized is "/" or "/*.*";
     }
 
-    private static WfxFindData[] BuildRootItems()
+    private async Task<IReadOnlyList<string>> ResolveRootProvidersAsync(CancellationToken cancellationToken)
     {
-        return GetConfiguredProviders()
+        var configured = TryGetConfiguredProvidersFromEnvironment();
+        if (configured.Count > 0)
+        {
+            return configured;
+        }
+
+        try
+        {
+            var response = await _facade.GetProvidersAsync(cancellationToken);
+            var providers = response.Data?.Providers;
+            if (response.Ok && providers is not null && providers.Count > 0)
+            {
+                return providers;
+            }
+        }
+        catch
+        {
+            // Fallback below keeps root listing available even when bridge is temporarily unavailable.
+        }
+
+        return DefaultProviders;
+    }
+
+    private static WfxFindData[] BuildRootItems(IReadOnlyList<string> providers)
+    {
+        return providers
             .Select(provider => new WfxFindData
             {
                 FileName = provider,
@@ -271,12 +297,12 @@ public sealed class WfxPluginRuntime
             .ToArray();
     }
 
-    private static IReadOnlyList<string> GetConfiguredProviders()
+    private static IReadOnlyList<string> TryGetConfiguredProvidersFromEnvironment()
     {
         var configured = Environment.GetEnvironmentVariable("TC_WFX_PROVIDERS");
         if (string.IsNullOrWhiteSpace(configured))
         {
-            return ["edocat", "alfresco", "fso"];
+            return [];
         }
 
         var providers = configured
@@ -286,8 +312,10 @@ public sealed class WfxPluginRuntime
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        return providers.Length > 0 ? providers : ["edocat", "alfresco", "fso"];
+        return providers;
     }
+
+    private static readonly string[] DefaultProviders = ["edocat", "alfresco", "fso"];
 
     private static bool TryGetContentBase64(JsonElement data, out string contentBase64)
     {

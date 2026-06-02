@@ -42,7 +42,23 @@ public sealed class WfxEntryPointsTests
         Assert.NotEqual(0, handle);
         Assert.NotNull(firstItem);
         Assert.True(firstItem.IsDirectory);
-        Assert.Contains(firstItem.FileName, new[] { "edocat", "alfresco", "fso" });
+        Assert.Contains(firstItem.FileName, new[] { "edocat", "alfresco", "fso", "dynamic-a", "dynamic-b" });
+    }
+
+    [Fact]
+    public void FsFindFirst_RootPath_UsesProvidersFromBridge()
+    {
+        var entryPoints = CreateEntryPoints(new[] { "dynamic-a", "dynamic-b" });
+
+        var firstResult = entryPoints.FsFindFirst("\\", out var handle, out var firstItem);
+        var secondResult = entryPoints.FsFindNext(handle, out var secondItem);
+
+        Assert.Equal(WfxResultCodes.Success, firstResult);
+        Assert.Equal(WfxResultCodes.Success, secondResult);
+        Assert.NotNull(firstItem);
+        Assert.NotNull(secondItem);
+        Assert.Equal("dynamic-a", firstItem.FileName);
+        Assert.Equal("dynamic-b", secondItem.FileName);
     }
 
     [Fact]
@@ -90,9 +106,9 @@ public sealed class WfxEntryPointsTests
         Assert.Equal(WfxResultCodes.Success, result);
     }
 
-    private static WfxEntryPoints CreateEntryPoints()
+    private static WfxEntryPoints CreateEntryPoints(string[]? providers = null)
     {
-        var facade = new WfxPluginFacade(new FakeBridgeClient());
+        var facade = new WfxPluginFacade(new FakeBridgeClient(providers ?? new[] { "edocat", "alfresco", "fso" }));
         var authProvider = new StaticAuthProvider(new BridgeAuthContext
         {
             Mode = "credentials",
@@ -106,6 +122,26 @@ public sealed class WfxEntryPointsTests
 
     private sealed class FakeBridgeClient : IWfxBridgeClient
     {
+        private readonly string[] _providers;
+
+        public FakeBridgeClient(string[] providers)
+        {
+            _providers = providers;
+        }
+
+        public Task<WfxResponse<WfxProvidersData>> GetProvidersAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new WfxResponse<WfxProvidersData>
+            {
+                Ok = true,
+                Data = new WfxProvidersData
+                {
+                    Providers = _providers,
+                    DefaultProvider = _providers.FirstOrDefault(),
+                },
+            });
+        }
+
         public Task<WfxResponse<WfxListingData>> ListAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new WfxResponse<WfxListingData>

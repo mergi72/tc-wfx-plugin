@@ -14,6 +14,11 @@ public sealed class WfxPluginFacade
         _bridgeClient = bridgeClient;
     }
 
+    public Task<WfxResponse<WfxProvidersData>> GetProvidersAsync(CancellationToken cancellationToken = default)
+    {
+        return _bridgeClient.GetProvidersAsync(cancellationToken);
+    }
+
     public Task<WfxResponse<WfxListingData>> ListDirectoryAsync(
         string providerPath,
         BridgeAuthContext auth,
