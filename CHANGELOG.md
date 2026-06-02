@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-06-02
+
+### Added
+
+- Compatibility gate enforcing minimum bridge version for plugin operations.
+- Structured bridge smoke validation wiring in CI release flow (when bridge token is configured).
+- Capabilities cache for provider feature flags with reconnect invalidation.
+- Improved auth recovery path after access denied to force credential re-prompt.
+
+### Changed
+
+- Credential persistence scope switched to Windows CurrentUser.
+- Explicit HTTP timeout handling in bridge client operations.
+
 ## [0.1.0] - 2026-06-02
 
 ### Added

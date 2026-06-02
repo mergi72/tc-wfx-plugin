@@ -15,7 +15,7 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 
 ## Release Notes
 
-- See `CHANGELOG.md` for release history and `v0.1.0` notes.
+- See `CHANGELOG.md` for release history and `v0.2.0` notes.
 
 ## License
 
