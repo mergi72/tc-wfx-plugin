@@ -5,10 +5,14 @@ namespace TcWfxPlugin.Wfx;
 
 public static class WfxNativeExports
 {
+    private const int CopyFlagOverwrite = 0x02;
+    private const int RequestTypeMsgYesNo = 9;
+
     private static readonly Lazy<WfxEntryPoints> EntryPoints = new(CreateEntryPoints);
     private static readonly object CallbackSyncRoot = new();
     private static int _pluginNumber;
     private static ProgressProcDelegate? _progressProc;
+    private static RequestProcDelegate? _requestProc;
 
     [UnmanagedCallersOnly(EntryPoint = "FsInitW")]
     public static int FsInitW(int pluginNr, nint progressProc, nint logProc, nint requestProc)
@@ -19,9 +23,11 @@ public static class WfxNativeExports
             _progressProc = progressProc == nint.Zero
                 ? null
                 : Marshal.GetDelegateForFunctionPointer<ProgressProcDelegate>(progressProc);
+            _requestProc = requestProc == nint.Zero
+                ? null
+                : Marshal.GetDelegateForFunctionPointer<RequestProcDelegate>(requestProc);
         }
         _ = logProc;
-        _ = requestProc;
         _ = EntryPoints.Value;
         return 0;
     }
@@ -91,7 +97,21 @@ public static class WfxNativeExports
 
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
-        return EntryPoints.Value.FsGetFile(remoteName, localName, copyFlags);
+
+        var effectiveCopyFlags = copyFlags;
+        if ((effectiveCopyFlags & CopyFlagOverwrite) == 0 && File.Exists(localName))
+        {
+            if (TryConfirmOverwrite(localName))
+            {
+                effectiveCopyFlags |= CopyFlagOverwrite;
+            }
+            else
+            {
+                return WfxResultCodes.WriteError;
+            }
+        }
+
+        return EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags);
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsPutFileW")]
@@ -179,8 +199,50 @@ public static class WfxNativeExports
         }
     }
 
+    private static bool TryConfirmOverwrite(string localPath)
+    {
+        RequestProcDelegate? requestProc;
+        int pluginNumber;
+
+        lock (CallbackSyncRoot)
+        {
+            requestProc = _requestProc;
+            pluginNumber = _pluginNumber;
+        }
+
+        if (requestProc is null)
+        {
+            return false;
+        }
+
+        nint titlePtr = nint.Zero;
+        nint textPtr = nint.Zero;
+        try
+        {
+            titlePtr = Marshal.StringToHGlobalUni("Overwrite existing file");
+            textPtr = Marshal.StringToHGlobalUni($"File already exists:\n{localPath}\n\nOverwrite it?");
+            var result = requestProc(pluginNumber, RequestTypeMsgYesNo, titlePtr, textPtr, nint.Zero, 0);
+            return result != 0;
+        }
+        finally
+        {
+            if (titlePtr != nint.Zero)
+            {
+                Marshal.FreeHGlobal(titlePtr);
+            }
+
+            if (textPtr != nint.Zero)
+            {
+                Marshal.FreeHGlobal(textPtr);
+            }
+        }
+    }
+
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
     private delegate int ProgressProcDelegate(int pluginNr, nint sourceName, nint targetName, int percentDone);
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
+    private delegate int RequestProcDelegate(int pluginNr, int requestType, nint customTitle, nint customText, nint returnedText, int maxLen);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct Win32FindDataW
