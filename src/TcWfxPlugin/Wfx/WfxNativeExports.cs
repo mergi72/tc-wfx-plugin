@@ -7,9 +7,6 @@ public static class WfxNativeExports
 {
     private const int CopyFlagOverwrite = 0x02;
     private const int RequestTypeMsgYesNo = 9;
-    private const uint MbIconQuestion = 0x00000020;
-    private const uint MbYesNo = 0x00000004;
-    private const int IdYes = 6;
 
     private static readonly Lazy<WfxEntryPoints> EntryPoints = new(CreateEntryPoints);
     private static readonly object CallbackSyncRoot = new();
@@ -237,7 +234,7 @@ public static class WfxNativeExports
 
         if (requestProc is null)
         {
-            return ShowFallbackOverwriteDialog(localPath);
+            return false;
         }
 
         nint titlePtr = nint.Zero;
@@ -251,7 +248,7 @@ public static class WfxNativeExports
         }
         catch
         {
-            return ShowFallbackOverwriteDialog(localPath);
+            return false;
         }
         finally
         {
@@ -265,17 +262,6 @@ public static class WfxNativeExports
                 Marshal.FreeHGlobal(textPtr);
             }
         }
-    }
-
-    private static bool ShowFallbackOverwriteDialog(string localPath)
-    {
-        var result = MessageBoxW(
-            nint.Zero,
-            $"File already exists:\n{localPath}\n\nOverwrite it?",
-            "Overwrite existing file",
-            MbYesNo | MbIconQuestion);
-
-        return result == IdYes;
     }
 
     private static string CombinePath(string directoryPath, string fileName)
@@ -294,9 +280,6 @@ public static class WfxNativeExports
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
     private delegate int RequestProcDelegate(int pluginNr, int requestType, nint customTitle, nint customText, nint returnedText, int maxLen);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern int MessageBoxW(nint hWnd, string lpText, string lpCaption, uint uType);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct Win32FindDataW
