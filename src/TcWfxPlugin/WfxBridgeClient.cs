@@ -9,6 +9,7 @@ namespace TcWfxPlugin;
 public sealed class WfxBridgeClient : IWfxBridgeClient
 {
     private static readonly BridgeJsonSerializerContext SerializerContext = BridgeJsonSerializerContext.Default;
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
 
     private readonly HttpClient _httpClient;
 
@@ -196,6 +197,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         return new HttpClient
         {
             BaseAddress = uri,
+            Timeout = DefaultTimeout,
         };
     }
 }

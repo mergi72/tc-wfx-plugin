@@ -6,7 +6,7 @@ namespace TcWfxPlugin.Wfx;
 public sealed class WindowsCredentialStore : ICredentialStore
 {
     private const uint CredTypeGeneric = 1;
-    private const uint CredPersistLocalMachine = 2;
+    private const uint CredPersistCurrentUser = 1;
 
     public bool TryRead(string target, out string username, out string password)
     {
@@ -53,7 +53,7 @@ public sealed class WindowsCredentialStore : ICredentialStore
                 TargetName = target,
                 CredentialBlobSize = (uint)secretBytes.Length,
                 CredentialBlob = blobPtr,
-                Persist = CredPersistLocalMachine,
+                Persist = CredPersistCurrentUser,
                 UserName = username,
             };
 
