@@ -90,3 +90,15 @@ Publish the plugin as native AOT DLL and validate exact ABI compatibility with t
 dotnet build
 dotnet test
 ```
+
+- Native AOT publish (WFX DLL):
+
+```powershell
+./scripts/publish-wfx.ps1
+```
+
+or directly:
+
+```powershell
+dotnet publish src/TcWfxPlugin/TcWfxPlugin.csproj --configuration Release -r win-x64 /p:PublishAot=true /p:NativeLib=Shared --output artifacts/TcWfxPlugin-win-x64
+```

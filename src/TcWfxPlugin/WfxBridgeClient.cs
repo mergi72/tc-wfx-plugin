@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using TcWfxPlugin.Bridge;
 using TcWfxPlugin.Contracts;
 
@@ -7,11 +8,7 @@ namespace TcWfxPlugin;
 
 public sealed class WfxBridgeClient : IWfxBridgeClient
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        PropertyNameCaseInsensitive = true,
-    };
+    private static readonly BridgeJsonSerializerContext SerializerContext = BridgeJsonSerializerContext.Default;
 
     private readonly HttpClient _httpClient;
 
@@ -29,44 +26,55 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
 
     public Task<WfxResponse<WfxProvidersData>> GetProvidersAsync(CancellationToken cancellationToken = default)
     {
-        return GetAsync<WfxProvidersData>("bridge/wfx/providers", cancellationToken);
+        return GetAsync(
+            "bridge/wfx/providers",
+            SerializerContext.WfxResponseWfxProvidersData,
+            cancellationToken);
     }
 
     public Task<WfxResponse<WfxListingData>> ListAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
     {
-        return PostAsync<WfxPathRequest, WfxListingData>(
+        return PostAsync(
             "bridge/wfx/list",
             new WfxPathRequest { Path = providerPath, Auth = auth },
+            SerializerContext.WfxPathRequest,
+            SerializerContext.WfxResponseWfxListingData,
             cancellationToken);
     }
 
     public Task<WfxResponse<JsonElement>> StatAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
     {
-        return PostAsync<WfxPathRequest, JsonElement>(
+        return PostAsync(
             "bridge/wfx/stat",
             new WfxPathRequest { Path = providerPath, Auth = auth },
+            SerializerContext.WfxPathRequest,
+            SerializerContext.WfxResponseJsonElement,
             cancellationToken);
     }
 
     public Task<WfxResponse<JsonElement>> MkdirAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
     {
-        return PostAsync<WfxPathRequest, JsonElement>(
+        return PostAsync(
             "bridge/wfx/mkdir",
             new WfxPathRequest { Path = providerPath, Auth = auth },
+            SerializerContext.WfxPathRequest,
+            SerializerContext.WfxResponseJsonElement,
             cancellationToken);
     }
 
     public Task<WfxResponse<JsonElement>> DeleteAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
     {
-        return PostAsync<WfxPathRequest, JsonElement>(
+        return PostAsync(
             "bridge/wfx/delete",
             new WfxPathRequest { Path = providerPath, Auth = auth },
+            SerializerContext.WfxPathRequest,
+            SerializerContext.WfxResponseJsonElement,
             cancellationToken);
     }
 
     public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)
     {
-        return PostAsync<WfxMoveRequest, JsonElement>(
+        return PostAsync(
             "bridge/wfx/rename",
             new WfxMoveRequest
             {
@@ -74,12 +82,14 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
                 Destination = destination,
                 Auth = auth,
             },
+            SerializerContext.WfxMoveRequest,
+            SerializerContext.WfxResponseJsonElement,
             cancellationToken);
     }
 
     public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)
     {
-        return PostAsync<WfxMoveRequest, JsonElement>(
+        return PostAsync(
             "bridge/wfx/copy",
             new WfxMoveRequest
             {
@@ -87,14 +97,18 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
                 Destination = destination,
                 Auth = auth,
             },
+            SerializerContext.WfxMoveRequest,
+            SerializerContext.WfxResponseJsonElement,
             cancellationToken);
     }
 
     public Task<WfxResponse<JsonElement>> DownloadAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
     {
-        return PostAsync<WfxPathRequest, JsonElement>(
+        return PostAsync(
             "bridge/wfx/download",
             new WfxPathRequest { Path = providerPath, Auth = auth },
+            SerializerContext.WfxPathRequest,
+            SerializerContext.WfxResponseJsonElement,
             cancellationToken);
     }
 
@@ -106,7 +120,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         bool overwrite,
         CancellationToken cancellationToken = default)
     {
-        return PostAsync<WfxUploadRequest, JsonElement>(
+        return PostAsync(
             "bridge/wfx/upload",
             new WfxUploadRequest
             {
@@ -116,28 +130,35 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
                 ContentBase64 = contentBase64,
                 Overwrite = overwrite,
             },
+            SerializerContext.WfxUploadRequest,
+            SerializerContext.WfxResponseJsonElement,
             cancellationToken);
     }
 
     private async Task<WfxResponse<TData>> PostAsync<TRequest, TData>(
         string route,
         TRequest payload,
+        JsonTypeInfo<TRequest> requestTypeInfo,
+        JsonTypeInfo<WfxResponse<TData>> responseTypeInfo,
         CancellationToken cancellationToken)
     {
-        using var response = await _httpClient.PostAsJsonAsync(route, payload, JsonOptions, cancellationToken);
-        return await ParseResponseAsync<TData>(response, cancellationToken);
+        using var content = JsonContent.Create(payload, requestTypeInfo);
+        using var response = await _httpClient.PostAsync(route, content, cancellationToken);
+        return await ParseResponseAsync(response, responseTypeInfo, cancellationToken);
     }
 
     private async Task<WfxResponse<TData>> GetAsync<TData>(
         string route,
+        JsonTypeInfo<WfxResponse<TData>> responseTypeInfo,
         CancellationToken cancellationToken)
     {
         using var response = await _httpClient.GetAsync(route, cancellationToken);
-        return await ParseResponseAsync<TData>(response, cancellationToken);
+        return await ParseResponseAsync(response, responseTypeInfo, cancellationToken);
     }
 
     private static async Task<WfxResponse<TData>> ParseResponseAsync<TData>(
         HttpResponseMessage response,
+        JsonTypeInfo<WfxResponse<TData>> responseTypeInfo,
         CancellationToken cancellationToken)
     {
         var rawBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -149,7 +170,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
 
         try
         {
-            var parsed = JsonSerializer.Deserialize<WfxResponse<TData>>(rawBody, JsonOptions);
+            var parsed = JsonSerializer.Deserialize(rawBody, responseTypeInfo);
             if (parsed is not null)
             {
                 return parsed;

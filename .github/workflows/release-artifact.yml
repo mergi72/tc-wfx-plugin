@@ -20,7 +20,7 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Publish plugin
-        run: dotnet publish src/TcWfxPlugin/TcWfxPlugin.csproj --configuration Release --output artifacts/TcWfxPlugin
+        run: dotnet publish src/TcWfxPlugin/TcWfxPlugin.csproj --configuration Release -r win-x64 /p:PublishAot=true /p:NativeLib=Shared --output artifacts/TcWfxPlugin
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
