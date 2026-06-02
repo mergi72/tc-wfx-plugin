@@ -1,0 +1,29 @@
+name: Release Artifact
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - v*
+
+jobs:
+  build-artifact:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish plugin
+        run: dotnet publish src/TcWfxPlugin/TcWfxPlugin.csproj --configuration Release --output artifacts/TcWfxPlugin
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tc-wfx-plugin-release
+          path: artifacts/TcWfxPlugin

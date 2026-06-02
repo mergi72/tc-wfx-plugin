@@ -2,6 +2,11 @@
 
 Separated C# repository for the Total Commander WFX plugin that integrates with `dms-provider-bridge`.
 
+## Automation
+
+- CI workflow: `.github/workflows/ci.yml` (restore, build, test on push/PR)
+- Release artifact workflow: `.github/workflows/release-artifact.yml` (manual run or tag `v*`)
+
 ## Structure
 
 - `src/TcWfxPlugin/Contracts/` - request/response DTO contracts aligned with bridge endpoints
