@@ -12,6 +12,12 @@ public static class TotalCommanderPathMapper
         }
 
         var normalized = totalCommanderPath.Trim().Replace('\\', '/');
+        normalized = StripWildcardTail(normalized);
+
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return false;
+        }
 
         if (ProviderPath.TryParse(normalized, out var alreadyProviderPath))
         {
@@ -43,5 +49,27 @@ public static class TotalCommanderPathMapper
 
         providerPath = $"{provider}:{providerRelativePath}";
         return ProviderPath.TryParse(providerPath, out _);
+    }
+
+    private static string StripWildcardTail(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return path;
+        }
+
+        var lastSlash = path.LastIndexOf('/');
+        if (lastSlash < 0 || lastSlash == path.Length - 1)
+        {
+            return path;
+        }
+
+        var tail = path[(lastSlash + 1)..];
+        if (!tail.Contains('*') && !tail.Contains('?'))
+        {
+            return path;
+        }
+
+        return path[..lastSlash];
     }
 }

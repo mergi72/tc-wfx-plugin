@@ -32,6 +32,32 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsFindFirst_RootPath_ReturnsProviderFolders()
+    {
+        var entryPoints = CreateEntryPoints();
+
+        var firstResult = entryPoints.FsFindFirst("\\", out var handle, out var firstItem);
+
+        Assert.Equal(WfxResultCodes.Success, firstResult);
+        Assert.NotEqual(0, handle);
+        Assert.NotNull(firstItem);
+        Assert.True(firstItem.IsDirectory);
+        Assert.Contains(firstItem.FileName, new[] { "edocat", "alfresco", "fso" });
+    }
+
+    [Fact]
+    public void FsFindFirst_WildcardPath_MapsToProviderDirectory()
+    {
+        var entryPoints = CreateEntryPoints();
+
+        var firstResult = entryPoints.FsFindFirst("\\edocat\\*.*", out _, out var firstItem);
+
+        Assert.Equal(WfxResultCodes.Success, firstResult);
+        Assert.NotNull(firstItem);
+        Assert.Equal("FolderA", firstItem.FileName);
+    }
+
+    [Fact]
     public void FsMkDir_InvalidPath_ReturnsFileNotFound()
     {
         var entryPoints = CreateEntryPoints();

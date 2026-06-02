@@ -8,6 +8,9 @@ public sealed class TotalCommanderPathMapperTests
     [InlineData("edocat:/", "edocat:/")]
     [InlineData("\\edocat", "edocat:/")]
     [InlineData("\\edocat\\folder\\a", "edocat:/folder/a")]
+    [InlineData("\\edocat\\*.*", "edocat:/")]
+    [InlineData("\\edocat\\folder\\*.txt", "edocat:/folder")]
+    [InlineData("edocat:/folder/*.*", "edocat:/folder")]
     [InlineData("alfresco/sites/demo", "alfresco:/sites/demo")]
     public void TryToProviderPath_ValidInput_ReturnsExpectedPath(string input, string expected)
     {

@@ -20,27 +20,36 @@ public sealed class WfxPluginRuntime
 
     public async Task<(int ResultCode, int Handle, WfxFindData? FirstItem)> FindFirstAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
     {
-        if (!TotalCommanderPathMapper.TryToProviderPath(totalCommanderPath, out var providerPath))
-        {
-            return (WfxResultCodes.FileNotFound, 0, null);
-        }
+        WfxFindData[] items;
 
-        var response = await _facade.ListDirectoryAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
-        if (!response.Ok || response.Data is null)
+        if (IsRootListingPath(totalCommanderPath))
         {
-            return (MapError(response.ErrorCode), 0, null);
+            items = BuildRootItems();
         }
-
-        var items = response.Data.Items
-            .Select(item => new WfxFindData
+        else
+        {
+            if (!TotalCommanderPathMapper.TryToProviderPath(totalCommanderPath, out var providerPath))
             {
-                FileName = item.Name,
-                FullPath = item.Path,
-                IsDirectory = item.IsFolder,
-                Size = item.Size ?? 0,
-                MimeType = item.MimeType,
-            })
-            .ToArray();
+                return (WfxResultCodes.FileNotFound, 0, null);
+            }
+
+            var response = await _facade.ListDirectoryAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
+            if (!response.Ok || response.Data is null)
+            {
+                return (MapError(response.ErrorCode), 0, null);
+            }
+
+            items = response.Data.Items
+                .Select(item => new WfxFindData
+                {
+                    FileName = item.Name,
+                    FullPath = item.Path,
+                    IsDirectory = item.IsFolder,
+                    Size = item.Size ?? 0,
+                    MimeType = item.MimeType,
+                })
+                .ToArray();
+        }
 
         var context = new FindContext(items);
         var first = context.MoveNext();
@@ -235,6 +244,49 @@ public sealed class WfxPluginRuntime
             404 => WfxResultCodes.FileNotFound,
             _ => WfxResultCodes.UnknownError,
         };
+    }
+
+    private static bool IsRootListingPath(string totalCommanderPath)
+    {
+        if (string.IsNullOrWhiteSpace(totalCommanderPath))
+        {
+            return true;
+        }
+
+        var normalized = totalCommanderPath.Trim().Replace('\\', '/').Trim();
+        return normalized is "/" or "/*.*";
+    }
+
+    private static WfxFindData[] BuildRootItems()
+    {
+        return GetConfiguredProviders()
+            .Select(provider => new WfxFindData
+            {
+                FileName = provider,
+                FullPath = $"{provider}:/",
+                IsDirectory = true,
+                Size = 0,
+                MimeType = null,
+            })
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> GetConfiguredProviders()
+    {
+        var configured = Environment.GetEnvironmentVariable("TC_WFX_PROVIDERS");
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            return ["edocat", "alfresco", "fso"];
+        }
+
+        var providers = configured
+            .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(value => value.Trim())
+            .Where(value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return providers.Length > 0 ? providers : ["edocat", "alfresco", "fso"];
     }
 
     private static bool TryGetContentBase64(JsonElement data, out string contentBase64)
