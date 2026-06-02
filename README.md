@@ -6,8 +6,9 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 
 - CI workflow: `.github/workflows/ci.yml` (restore, build, test on push/PR)
 - Release artifact workflow: `.github/workflows/release-artifact.yml` (manual run or tag `v*`)
+- Release workflow gating: when secret `BRIDGE_REPO_TOKEN` is set, release first runs bridge integration smoke and publishes artifact only if smoke succeeds.
 - Integration smoke workflow job: starts local `edocat-bridge`, validates `GET /health`, `GET /bridge/wfx/providers`, and `POST /bridge/wfx/list` using FSO path.
-	- For cross-repo checkout in GitHub Actions, configure secret `BRIDGE_REPO_TOKEN` (read access to `mergi72/edocat-bridge`).
+  - For cross-repo checkout in GitHub Actions, configure secret `BRIDGE_REPO_TOKEN` (read access to `mergi72/edocat-bridge`).
 
 ## Release Notes
 

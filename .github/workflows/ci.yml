@@ -29,14 +29,27 @@ jobs:
         run: dotnet test --configuration Release --no-build --verbosity normal
 
   integration-smoke:
-    if: ${{ secrets.BRIDGE_REPO_TOKEN != '' }}
     runs-on: windows-latest
 
     steps:
       - name: Checkout plugin repository
         uses: actions/checkout@v4
 
+      - name: Detect bridge token
+        id: token
+        shell: pwsh
+        env:
+          BRIDGE_REPO_TOKEN: ${{ secrets.BRIDGE_REPO_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:BRIDGE_REPO_TOKEN)) {
+            "has_token=false" >> $env:GITHUB_OUTPUT
+            Write-Host "BRIDGE_REPO_TOKEN is not set. Integration smoke will be skipped."
+          } else {
+            "has_token=true" >> $env:GITHUB_OUTPUT
+          }
+
       - name: Checkout bridge repository
+        if: steps.token.outputs.has_token == 'true'
         uses: actions/checkout@v4
         with:
           repository: mergi72/edocat-bridge
@@ -45,16 +58,19 @@ jobs:
           token: ${{ secrets.BRIDGE_REPO_TOKEN }}
 
       - name: Setup Python 3.12
+        if: steps.token.outputs.has_token == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install bridge dependencies
+        if: steps.token.outputs.has_token == 'true'
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ./edocat-bridge
 
       - name: Run bridge integration smoke
+        if: steps.token.outputs.has_token == 'true'
         shell: pwsh
         run: ./scripts/run-bridge-smoke.ps1 -BridgeRepoPath ./edocat-bridge
