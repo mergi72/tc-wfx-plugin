@@ -150,6 +150,60 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsFindNext_ExpiredHandle_ReturnsFileNotFound()
+    {
+        Environment.SetEnvironmentVariable("TC_WFX_FIND_CONTEXT_TTL_SECONDS", "1");
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        try
+        {
+            var entryPoints = CreateEntryPoints(new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" }), () => now);
+
+            var firstResult = entryPoints.FsFindFirst("\\edocat", out var handle, out _);
+            now = now.AddSeconds(2);
+            var nextResult = entryPoints.FsFindNext(handle, out _);
+
+            Assert.Equal(WfxResultCodes.Success, firstResult);
+            Assert.Equal(WfxResultCodes.FileNotFound, nextResult);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TC_WFX_FIND_CONTEXT_TTL_SECONDS", null);
+        }
+    }
+
+    [Fact]
+    public void FsFindFirst_WhenMaxContextsExceeded_EvictsOldestHandle()
+    {
+        Environment.SetEnvironmentVariable("TC_WFX_MAX_FIND_CONTEXTS", "2");
+
+        try
+        {
+            var entryPoints = CreateEntryPoints();
+
+            var firstResult = entryPoints.FsFindFirst("\\edocat", out var handle1, out _);
+            var secondResult = entryPoints.FsFindFirst("\\edocat", out var handle2, out _);
+            var thirdResult = entryPoints.FsFindFirst("\\edocat", out var handle3, out _);
+
+            var evictedNext = entryPoints.FsFindNext(handle1, out _);
+            var keepSecond = entryPoints.FsFindNext(handle2, out _);
+            var keepThird = entryPoints.FsFindNext(handle3, out _);
+
+            Assert.Equal(WfxResultCodes.Success, firstResult);
+            Assert.Equal(WfxResultCodes.Success, secondResult);
+            Assert.Equal(WfxResultCodes.Success, thirdResult);
+
+            Assert.Equal(WfxResultCodes.FileNotFound, evictedNext);
+            Assert.Equal(WfxResultCodes.Success, keepSecond);
+            Assert.Equal(WfxResultCodes.Success, keepThird);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TC_WFX_MAX_FIND_CONTEXTS", null);
+        }
+    }
+
+    [Fact]
     public void FsFindFirst_WildcardPath_MapsToProviderDirectory()
     {
         var entryPoints = CreateEntryPoints();
