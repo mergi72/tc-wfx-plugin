@@ -364,6 +364,83 @@ public sealed class WfxServicesTests
         }
     }
 
+    [Fact]
+    public async Task Runtime_FindFirst_AccessDenied_RetriesAfterAuthReset()
+    {
+        var client = new FakeBridgeClient
+        {
+            ListResponder = auth =>
+            {
+                if (string.Equals(auth.Username, "first-user", StringComparison.Ordinal))
+                {
+                    return new WfxResponse<WfxListingData> { Ok = false, ErrorCode = 403 };
+                }
+
+                return new WfxResponse<WfxListingData>
+                {
+                    Ok = true,
+                    Data = new WfxListingData
+                    {
+                        Provider = "edocat",
+                        Path = "edocat:/",
+                        Total = 1,
+                        Items =
+                        [
+                            new WfxItemDto
+                            {
+                                Id = "1",
+                                Name = "Recovered.txt",
+                                Path = "edocat:/Recovered.txt",
+                                IsFolder = false,
+                            },
+                        ],
+                    },
+                };
+            },
+        };
+
+        var authProvider = new SwitchingAuthProvider(
+            new BridgeAuthContext { Mode = "credentials", Username = "first-user", Password = "bad" },
+            new BridgeAuthContext { Mode = "credentials", Username = "second-user", Password = "good" });
+
+        var runtime = CreateRuntime(client, authProvider);
+        var result = await runtime.FindFirstAsync("\\edocat");
+
+        Assert.Equal(WfxResultCodes.Success, result.ResultCode);
+        Assert.Equal(1, authProvider.ResetCount);
+        Assert.Equal(2, client.ListCallCount);
+        Assert.NotNull(result.FirstItem);
+        Assert.Equal("Recovered.txt", result.FirstItem.FileName);
+    }
+
+    [Fact]
+    public async Task Runtime_MkDir_AccessDenied_RetriesAfterAuthReset()
+    {
+        var client = new FakeBridgeClient
+        {
+            MkdirResponder = auth =>
+            {
+                if (string.Equals(auth.Username, "first-user", StringComparison.Ordinal))
+                {
+                    return JsonResponse(false, "{}", errorCode: 403);
+                }
+
+                return JsonResponse(true, "{}");
+            },
+        };
+
+        var authProvider = new SwitchingAuthProvider(
+            new BridgeAuthContext { Mode = "credentials", Username = "first-user", Password = "bad" },
+            new BridgeAuthContext { Mode = "credentials", Username = "second-user", Password = "good" });
+
+        var runtime = CreateRuntime(client, authProvider);
+        var result = await runtime.MkDirAsync("\\edocat\\new-dir");
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, authProvider.ResetCount);
+        Assert.Equal(2, client.MkdirCallCount);
+    }
+
     private static WfxListingService CreateListingService(FakeBridgeClient bridgeClient)
     {
         var facade = new WfxPluginFacade(bridgeClient);
@@ -380,6 +457,12 @@ public sealed class WfxServicesTests
     {
         var facade = new WfxPluginFacade(bridgeClient);
         return new WfxPluginRuntime(facade, CreateAuthProvider(), () => DateTime.UtcNow);
+    }
+
+    private static WfxPluginRuntime CreateRuntime(FakeBridgeClient bridgeClient, IWfxAuthProvider authProvider)
+    {
+        var facade = new WfxPluginFacade(bridgeClient);
+        return new WfxPluginRuntime(facade, authProvider, () => DateTime.UtcNow);
     }
 
     private static StaticAuthProvider CreateAuthProvider()
@@ -455,8 +538,12 @@ public sealed class WfxServicesTests
         public WfxResponse<JsonElement> RenameResponse { get; set; } = JsonResponse(true, "{}");
         public WfxResponse<JsonElement> CopyResponse { get; set; } = JsonResponse(true, "{}");
         public WfxResponse<JsonElement> StatResponse { get; set; } = JsonResponse(true, "{}");
+        public Func<BridgeAuthContext, WfxResponse<WfxListingData>>? ListResponder { get; set; }
+        public Func<BridgeAuthContext, WfxResponse<JsonElement>>? MkdirResponder { get; set; }
 
         public int GetProvidersCallCount { get; private set; }
+        public int ListCallCount { get; private set; }
+        public int MkdirCallCount { get; private set; }
 
         public string? LastUploadDestination { get; private set; }
         public string? LastUploadFileName { get; private set; }
@@ -472,13 +559,19 @@ public sealed class WfxServicesTests
         }
 
         public Task<WfxResponse<WfxListingData>> ListAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
-            => Task.FromResult(ListResponse);
+        {
+            ListCallCount++;
+            return Task.FromResult(ListResponder is not null ? ListResponder(auth) : ListResponse);
+        }
 
         public Task<WfxResponse<JsonElement>> StatAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
             => Task.FromResult(StatResponse);
 
         public Task<WfxResponse<JsonElement>> MkdirAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
-            => Task.FromResult(MkdirResponse);
+        {
+            MkdirCallCount++;
+            return Task.FromResult(MkdirResponder is not null ? MkdirResponder(auth) : MkdirResponse);
+        }
 
         public Task<WfxResponse<JsonElement>> DeleteAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
             => Task.FromResult(DeleteResponse);
@@ -512,6 +605,32 @@ public sealed class WfxServicesTests
             LastUploadContentBase64 = contentBase64;
             LastUploadOverwrite = overwrite;
             return Task.FromResult(UploadResponse);
+        }
+    }
+
+    private sealed class SwitchingAuthProvider : IWfxAuthProvider
+    {
+        private readonly BridgeAuthContext _first;
+        private readonly BridgeAuthContext _second;
+        private bool _useSecond;
+
+        public int ResetCount { get; private set; }
+
+        public SwitchingAuthProvider(BridgeAuthContext first, BridgeAuthContext second)
+        {
+            _first = first;
+            _second = second;
+        }
+
+        public BridgeAuthContext GetAuthContext()
+        {
+            return _useSecond ? _second : _first;
+        }
+
+        public void ResetCachedAuth()
+        {
+            ResetCount++;
+            _useSecond = true;
         }
     }
 }

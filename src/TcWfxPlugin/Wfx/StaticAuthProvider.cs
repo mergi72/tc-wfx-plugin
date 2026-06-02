@@ -12,4 +12,8 @@ public sealed class StaticAuthProvider : IWfxAuthProvider
     }
 
     public BridgeAuthContext GetAuthContext() => _authContext;
+
+    public void ResetCachedAuth()
+    {
+    }
 }

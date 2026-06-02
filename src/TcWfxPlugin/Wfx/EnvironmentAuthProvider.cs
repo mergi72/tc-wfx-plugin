@@ -26,4 +26,8 @@ public sealed class EnvironmentAuthProvider : IWfxAuthProvider
             WinUser = Environment.GetEnvironmentVariable("TC_WFX_WIN_USER") ?? Environment.UserName,
         };
     }
+
+    public void ResetCachedAuth()
+    {
+    }
 }

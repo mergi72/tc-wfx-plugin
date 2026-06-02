@@ -105,4 +105,12 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
             return _cachedAuth;
         }
     }
+
+    public void ResetCachedAuth()
+    {
+        lock (_syncRoot)
+        {
+            _cachedAuth = null;
+        }
+    }
 }

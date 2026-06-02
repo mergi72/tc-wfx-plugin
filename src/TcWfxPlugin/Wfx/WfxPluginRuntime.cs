@@ -2,6 +2,7 @@ namespace TcWfxPlugin.Wfx;
 
 public sealed class WfxPluginRuntime
 {
+    private readonly IWfxAuthProvider _authProvider;
     private readonly WfxListingService _listingService;
     private readonly WfxTransferService _transferService;
     private readonly WfxContextManager _contextManager;
@@ -12,6 +13,7 @@ public sealed class WfxPluginRuntime
 
     public WfxPluginRuntime(WfxPluginFacade facade, IWfxAuthProvider authProvider, Func<DateTime>? utcNow = null)
     {
+        _authProvider = authProvider;
         var nowProvider = utcNow ?? (() => DateTime.UtcNow);
         _listingService = new WfxListingService(facade, authProvider, nowProvider);
         _transferService = new WfxTransferService(facade, authProvider);
@@ -26,6 +28,12 @@ public sealed class WfxPluginRuntime
     public async Task<(int ResultCode, int Handle, WfxFindData? FirstItem)> FindFirstAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
     {
         var (resultCode, items) = await _listingService.ResolveItemsAsync(totalCommanderPath, cancellationToken);
+        if (resultCode == WfxResultCodes.AccessDenied)
+        {
+            _authProvider.ResetCachedAuth();
+            (resultCode, items) = await _listingService.ResolveItemsAsync(totalCommanderPath, cancellationToken);
+        }
+
         if (resultCode != WfxResultCodes.Success && resultCode != WfxResultCodes.NoMoreFiles)
         {
             return (resultCode, 0, null);
@@ -89,7 +97,13 @@ public sealed class WfxPluginRuntime
 
     public async Task<bool> PathExistsAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
     {
-        return await _transferService.PathExistsAsync(totalCommanderPath, cancellationToken);
+        var exists = await _transferService.PathExistsAsync(totalCommanderPath, cancellationToken);
+        if (exists)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     public void CancelCurrentTransfer()
@@ -116,7 +130,14 @@ public sealed class WfxPluginRuntime
         try
         {
             var progress = new Progress<WfxTransferProgress>(value => TransferProgressChanged?.Invoke(value));
-            return await transfer(progress, transferCts.Token);
+            var result = await transfer(progress, transferCts.Token);
+            if (result == WfxResultCodes.AccessDenied)
+            {
+                _authProvider.ResetCachedAuth();
+                result = await transfer(progress, transferCts.Token);
+            }
+
+            return result;
         }
         catch (OperationCanceledException) when (transferCts.IsCancellationRequested)
         {
