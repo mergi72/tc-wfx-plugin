@@ -92,6 +92,11 @@ public sealed class WfxEntryPoints
         _runtime.CancelCurrentTransfer();
     }
 
+    public bool FsPathExists(string path)
+    {
+        return _runtime.PathExistsAsync(path).GetAwaiter().GetResult();
+    }
+
     private static (bool Overwrite, bool Resume) ParseCopyFlags(int copyFlags)
     {
         var overwrite = (copyFlags & CopyFlagOverwrite) != 0;

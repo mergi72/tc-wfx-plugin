@@ -119,7 +119,29 @@ public static class WfxNativeExports
     {
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
-        return EntryPoints.Value.FsPutFile(localName, remoteName, copyFlags);
+
+        var effectiveCopyFlags = copyFlags;
+        if ((effectiveCopyFlags & CopyFlagOverwrite) == 0)
+        {
+            var fileName = Path.GetFileName(localName);
+            if (!string.IsNullOrWhiteSpace(fileName))
+            {
+                var remoteFilePath = CombinePath(remoteName, fileName);
+                if (EntryPoints.Value.FsPathExists(remoteFilePath))
+                {
+                    if (TryConfirmOverwrite(remoteFilePath))
+                    {
+                        effectiveCopyFlags |= CopyFlagOverwrite;
+                    }
+                    else
+                    {
+                        return WfxResultCodes.WriteError;
+                    }
+                }
+            }
+        }
+
+        return EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags);
     }
 
     private static void WriteFindData(nint destination, WfxFindData item)
@@ -236,6 +258,17 @@ public static class WfxNativeExports
                 Marshal.FreeHGlobal(textPtr);
             }
         }
+    }
+
+    private static string CombinePath(string directoryPath, string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(directoryPath))
+        {
+            return fileName;
+        }
+
+        var trimmed = directoryPath.TrimEnd('\\', '/');
+        return $"{trimmed}\\{fileName}";
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]

@@ -274,6 +274,34 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
+    public async Task TransferService_PathExists_WhenStatOk_ReturnsTrue()
+    {
+        var client = new FakeBridgeClient
+        {
+            StatResponse = JsonResponse(true, "{}"),
+        };
+
+        var service = CreateTransferService(client);
+        var exists = await service.PathExistsAsync("\\edocat\\existing.txt");
+
+        Assert.True(exists);
+    }
+
+    [Fact]
+    public async Task TransferService_PathExists_WhenBridgeReturnsNotFound_ReturnsFalse()
+    {
+        var client = new FakeBridgeClient
+        {
+            StatResponse = JsonResponse(false, "{}", errorCode: 2),
+        };
+
+        var service = CreateTransferService(client);
+        var exists = await service.PathExistsAsync("\\edocat\\missing.txt");
+
+        Assert.False(exists);
+    }
+
+    [Fact]
     public async Task Runtime_GetFileAsync_WhenCanceled_ReturnsUserAbort()
     {
         var client = new FakeBridgeClient
@@ -426,6 +454,7 @@ public sealed class WfxServicesTests
         public WfxResponse<JsonElement> DeleteResponse { get; set; } = JsonResponse(true, "{}");
         public WfxResponse<JsonElement> RenameResponse { get; set; } = JsonResponse(true, "{}");
         public WfxResponse<JsonElement> CopyResponse { get; set; } = JsonResponse(true, "{}");
+        public WfxResponse<JsonElement> StatResponse { get; set; } = JsonResponse(true, "{}");
 
         public int GetProvidersCallCount { get; private set; }
 
@@ -446,7 +475,7 @@ public sealed class WfxServicesTests
             => Task.FromResult(ListResponse);
 
         public Task<WfxResponse<JsonElement>> StatAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
-            => Task.FromResult(JsonResponse(true, "{}"));
+            => Task.FromResult(StatResponse);
 
         public Task<WfxResponse<JsonElement>> MkdirAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
             => Task.FromResult(MkdirResponse);

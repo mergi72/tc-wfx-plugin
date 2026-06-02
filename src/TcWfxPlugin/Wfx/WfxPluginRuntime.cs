@@ -87,6 +87,11 @@ public sealed class WfxPluginRuntime
             cancellationToken);
     }
 
+    public async Task<bool> PathExistsAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
+    {
+        return await _transferService.PathExistsAsync(totalCommanderPath, cancellationToken);
+    }
+
     public void CancelCurrentTransfer()
     {
         lock (_transferSyncRoot)

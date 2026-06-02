@@ -227,6 +227,28 @@ internal sealed class WfxTransferService
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
 
+    public async Task<bool> PathExistsAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
+    {
+        if (!TotalCommanderPathMapper.TryToProviderPath(totalCommanderPath, out var providerPath))
+        {
+            return false;
+        }
+
+        var response = await _facade.GetItemInfoAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
+        if (response.Ok)
+        {
+            return true;
+        }
+
+        // Bridge not-found code from commander_api.WfxErrorCode.
+        if (response.ErrorCode == 2 || response.ErrorCode == 404)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
     private static bool TryGetContentBase64(JsonElement data, out string contentBase64)
     {
         contentBase64 = string.Empty;
