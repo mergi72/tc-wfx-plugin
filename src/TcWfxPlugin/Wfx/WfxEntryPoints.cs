@@ -60,12 +60,11 @@ public sealed class WfxEntryPoints
             return WfxResultCodes.NotSupported;
         }
 
-        // TC may call FsGetFile for plugin->plugin copy. In that case the target
-        // path looks like a plugin panel path (e.g. "\\edocat\\...") and should
-        // be handled by direct bridge copy instead of download to local file system.
-        var looksLikePluginTarget = !string.IsNullOrWhiteSpace(localName)
-            && (localName.StartsWith('\\') || localName.StartsWith('/'));
-        if (looksLikePluginTarget && TotalCommanderPathMapper.TryToProviderPath(localName, out _))
+        // TC may call FsGetFile for plugin->plugin copy. Besides classic "\\provider\\..."
+        // paths, TC can also pass a provider path without a leading slash.
+        if (TotalCommanderPathMapper.TryToProviderPath(remoteName, out var sourceProviderPath)
+            && TotalCommanderPathMapper.TryToProviderPath(localName, out var destinationProviderPath)
+            && sourceProviderPath.Split(':', 2)[0].Equals(destinationProviderPath.Split(':', 2)[0], StringComparison.OrdinalIgnoreCase))
         {
             return _runtime.CopyAsync(remoteName, localName).GetAwaiter().GetResult();
         }

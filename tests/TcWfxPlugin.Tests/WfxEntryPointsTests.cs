@@ -354,6 +354,19 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsGetFile_PluginTargetPathWithoutLeadingSlash_UsesDirectCopyInsteadOfDownload()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var result = entryPoints.FsGetFile("alfresco\\source\\file.txt", "alfresco\\target", copyFlags: 0x02);
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, bridgeClient.CopyCallCount);
+        Assert.Equal(0, bridgeClient.DownloadCallCount);
+    }
+
+    [Fact]
     public void FsPutFile_ValidPath_ReturnsSuccess()
     {
         var entryPoints = CreateEntryPoints();
