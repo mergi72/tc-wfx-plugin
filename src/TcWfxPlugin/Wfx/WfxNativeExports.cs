@@ -14,10 +14,8 @@ public static class WfxNativeExports
     public const int RequestTypePassword = 4;
     private const int RequestTypeMsgYesNo = 9;
     private const int RequestBufferLength = 512;
-    private const uint WmKeyDown = 0x0100;
-    private const uint WmKeyUp = 0x0101;
-    private const int VkControl = 0x11;
-    private const int VkR = 0x52;
+    private const uint WmCommand = 0x0111;
+    private const int CmRereadSource = 540;
 
     private static readonly Lazy<WfxEntryPoints> EntryPoints = new(CreateEntryPoints);
     private static readonly object CallbackSyncRoot = new();
@@ -365,10 +363,8 @@ public static class WfxNativeExports
                 return;
             }
 
-            _ = PostMessageW(hwnd, WmKeyDown, (nint)VkControl, nint.Zero);
-            _ = PostMessageW(hwnd, WmKeyDown, (nint)VkR, nint.Zero);
-            _ = PostMessageW(hwnd, WmKeyUp, (nint)VkR, nint.Zero);
-            _ = PostMessageW(hwnd, WmKeyUp, (nint)VkControl, nint.Zero);
+            // Trigger Total Commander built-in panel reread command directly.
+            _ = PostMessageW(hwnd, WmCommand, (nint)CmRereadSource, nint.Zero);
         }
         catch
         {
