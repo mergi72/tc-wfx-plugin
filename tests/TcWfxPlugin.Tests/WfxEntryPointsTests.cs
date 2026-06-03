@@ -307,6 +307,22 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsDeleteFile_AccessDenied_PathExistsThenMissing_IsTreatedAsSuccess()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
+        {
+            DeleteErrorCode = 3,
+            StatErrorCodesSequence = new Queue<int?>(new int?[] { null, 404 }),
+        };
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var result = entryPoints.FsDeleteFile("\\alfresco\\eventual\\file.txt");
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(2, bridgeClient.StatCallCount);
+    }
+
+    [Fact]
     public void FsDeleteFile_AccessDenied_WhenPathStillExists_ReturnsAccessDenied()
     {
         var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
@@ -662,6 +678,8 @@ public sealed class WfxEntryPointsTests
         public bool LastUploadOverwrite { get; private set; }
         public int? DeleteErrorCode { get; set; }
         public int? StatErrorCode { get; set; }
+        public Queue<int?>? StatErrorCodesSequence { get; set; }
+        public int StatCallCount { get; private set; }
         public IReadOnlyList<WfxItemDto>? ListItemsOverride { get; set; }
 
         public FakeBridgeClient(string[] providers)
@@ -731,6 +749,19 @@ public sealed class WfxEntryPointsTests
 
         public Task<WfxResponse<JsonElement>> StatAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
         {
+            StatCallCount++;
+
+            if (StatErrorCodesSequence is { Count: > 0 })
+            {
+                var next = StatErrorCodesSequence.Dequeue();
+                if (next is int sequenceErrorCode)
+                {
+                    return Task.FromResult(new WfxResponse<JsonElement> { Ok = false, ErrorCode = sequenceErrorCode, Message = "stat failed" });
+                }
+
+                return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+            }
+
             if (StatErrorCode is int errorCode)
             {
                 return Task.FromResult(new WfxResponse<JsonElement> { Ok = false, ErrorCode = errorCode, Message = "stat failed" });

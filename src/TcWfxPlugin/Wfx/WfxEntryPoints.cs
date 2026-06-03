@@ -194,6 +194,15 @@ public sealed class WfxEntryPoints
         }
 
         var stillExists = _runtime.PathExistsAsync(path).GetAwaiter().GetResult();
+        if (!stillExists)
+        {
+            return WfxResultCodes.Success;
+        }
+
+        // Some providers may report stale existence right after successful delete.
+        // Re-check once before surfacing an error to Total Commander.
+        Task.Delay(200).GetAwaiter().GetResult();
+        stillExists = _runtime.PathExistsAsync(path).GetAwaiter().GetResult();
         return stillExists ? result : WfxResultCodes.Success;
     }
 
