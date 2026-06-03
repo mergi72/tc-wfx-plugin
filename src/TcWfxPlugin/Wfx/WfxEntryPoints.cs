@@ -47,6 +47,13 @@ public sealed class WfxEntryPoints
     {
         if (move)
         {
+            // TC may issue move callbacks with identical source/target while performing
+            // delete-on-move cleanup. Treat this as a delete operation.
+            if (AreSamePath(oldName, newName))
+            {
+                return FsDeleteFile(oldName);
+            }
+
             var sourceIsProviderPath = !LooksLikeWindowsLocalPath(oldName)
                 && TotalCommanderPathMapper.TryToProviderPath(oldName, out _);
             var destinationIsProviderPath = !LooksLikeWindowsLocalPath(newName)
@@ -189,6 +196,26 @@ public sealed class WfxEntryPoints
 
         var stillExists = _runtime.PathExistsAsync(path).GetAwaiter().GetResult();
         return stillExists ? result : WfxResultCodes.Success;
+    }
+
+    private static bool AreSamePath(string left, string right)
+    {
+        var normalizedLeft = NormalizeTcPath(left);
+        var normalizedRight = NormalizeTcPath(right);
+        return string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeTcPath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return value
+            .Trim()
+            .Replace('/', '\\')
+            .TrimEnd('\\');
     }
 
     public int FsGetFile(string remoteName, string localName, int copyFlags = 0)
