@@ -63,7 +63,8 @@ public sealed class WfxPluginRuntime
     {
         return await RunTransferAsync(
             (_, ct) => _transferService.MkDirAsync(totalCommanderPath, ct),
-            cancellationToken);
+            cancellationToken,
+            retryOnAccessDenied: false);
     }
 
     public async Task<int> DeleteAsync(string totalCommanderPath, CancellationToken cancellationToken = default)

@@ -604,7 +604,7 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
-    public async Task Runtime_MkDir_AccessDenied_RetriesAfterAuthReset()
+    public async Task Runtime_MkDir_AccessDenied_DoesNotRetryAuthReset()
     {
         var client = new FakeBridgeClient
         {
@@ -626,9 +626,9 @@ public sealed class WfxServicesTests
         var runtime = CreateRuntime(client, authProvider);
         var result = await runtime.MkDirAsync("\\edocat\\new-dir");
 
-        Assert.Equal(WfxResultCodes.Success, result);
-        Assert.Equal(1, authProvider.ResetCount);
-        Assert.Equal(2, client.MkdirCallCount);
+        Assert.Equal(WfxResultCodes.AccessDenied, result);
+        Assert.Equal(0, authProvider.ResetCount);
+        Assert.Equal(1, client.MkdirCallCount);
     }
 
     private static WfxListingService CreateListingService(FakeBridgeClient bridgeClient)
