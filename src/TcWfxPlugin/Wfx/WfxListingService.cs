@@ -1,3 +1,4 @@
+using System.Text.Json;
 using TcWfxPlugin.Core;
 using TcWfxPlugin.Contracts;
 
@@ -97,6 +98,15 @@ internal sealed class WfxListingService
         var response = await _facade.ListDirectoryAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
         if (!response.Ok || response.Data is null)
         {
+            if (ShouldTryStatFallback(response.ErrorCode))
+            {
+                var statFallbackItem = await TryResolveSingleItemViaStatAsync(providerPath, cancellationToken);
+                if (statFallbackItem is not null)
+                {
+                    return (WfxResultCodes.Success, [statFallbackItem]);
+                }
+            }
+
             return (WfxBridgeErrorMapper.MapError(response.ErrorCode), []);
         }
 
@@ -115,6 +125,108 @@ internal sealed class WfxListingService
             .ToArray();
 
         return (items.Length > 0 ? WfxResultCodes.Success : WfxResultCodes.NoMoreFiles, items);
+    }
+
+    private async Task<WfxFindData?> TryResolveSingleItemViaStatAsync(string providerPath, CancellationToken cancellationToken)
+    {
+        var response = await _facade.GetItemInfoAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
+        if (!response.Ok || response.Data.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        return TryMapStatItem(response.Data, providerPath, out var item) ? item : null;
+    }
+
+    private static bool TryMapStatItem(JsonElement data, string providerPath, out WfxFindData item)
+    {
+        item = default!;
+        if (data.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (!TryGetStringProperty(data, "name", out var name) || string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        if (!TryGetStringProperty(data, "path", out var fullPath) || string.IsNullOrWhiteSpace(fullPath))
+        {
+            fullPath = providerPath;
+        }
+
+        var isDirectory = false;
+        if (data.TryGetProperty("is_folder", out var folderProperty)
+            && (folderProperty.ValueKind == JsonValueKind.True || folderProperty.ValueKind == JsonValueKind.False))
+        {
+            isDirectory = folderProperty.GetBoolean();
+        }
+
+        long size = 0;
+        if (data.TryGetProperty("size", out var sizeProperty) && sizeProperty.ValueKind == JsonValueKind.Number)
+        {
+            _ = sizeProperty.TryGetInt64(out size);
+        }
+
+        string? mimeType = null;
+        if (TryGetStringProperty(data, "mime_type", out var rawMimeType) && !string.IsNullOrWhiteSpace(rawMimeType))
+        {
+            mimeType = rawMimeType;
+        }
+
+        DateTimeOffset? lastWriteTimeUtc = null;
+        if (TryGetStringProperty(data, "modified_at", out var modifiedAt)
+            && !string.IsNullOrWhiteSpace(modifiedAt)
+            && DateTimeOffset.TryParse(modifiedAt, out var parsedModifiedAt))
+        {
+            lastWriteTimeUtc = parsedModifiedAt.ToUniversalTime();
+        }
+
+        var isReadOnly = false;
+        if (data.TryGetProperty("is_read_only", out var readOnlyProperty)
+            && (readOnlyProperty.ValueKind == JsonValueKind.True || readOnlyProperty.ValueKind == JsonValueKind.False))
+        {
+            isReadOnly = readOnlyProperty.GetBoolean();
+        }
+
+        item = new WfxFindData
+        {
+            FileName = name,
+            FullPath = fullPath,
+            IsDirectory = isDirectory,
+            Size = size,
+            MimeType = mimeType,
+            LastWriteTimeUtc = lastWriteTimeUtc,
+            IsReadOnly = isReadOnly,
+        };
+
+        return true;
+    }
+
+    private static bool TryGetStringProperty(JsonElement data, string propertyName, out string value)
+    {
+        value = string.Empty;
+        if (!data.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        var parsed = property.GetString();
+        if (parsed is null)
+        {
+            return false;
+        }
+
+        value = parsed;
+        return true;
+    }
+
+    private static bool ShouldTryStatFallback(int errorCode)
+    {
+        // Fallback to stat only for "path is not a folder" style failures.
+        // Never mask auth/permission/internal failures such as ACCESS_DENIED.
+        return errorCode is 2 or 4 or 400 or 404;
     }
 
     private async Task<IReadOnlyList<string>> ResolveRootProvidersAsync(CancellationToken cancellationToken)

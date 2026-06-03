@@ -226,6 +226,66 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsFindFirst_FilePath_WhenListReturnsBadPath_UsesStatFallback()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
+        {
+            ListErrorCode = 4,
+            StatJsonResponse = """
+                {
+                  "id": "2",
+                  "name": "FileB.txt",
+                  "path": "alfresco:/Folder/FileB.txt",
+                  "is_folder": false,
+                  "size": 123,
+                  "mime_type": "text/plain",
+                  "modified_at": "2026-01-01T10:00:00Z",
+                  "is_read_only": false
+                }
+                """,
+        };
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var firstResult = entryPoints.FsFindFirst("\\alfresco\\Folder\\FileB.txt", out var handle, out var firstItem);
+        var noMoreResult = entryPoints.FsFindNext(handle, out _);
+
+        Assert.Equal(WfxResultCodes.Success, firstResult);
+        Assert.Equal(WfxResultCodes.NoMoreFiles, noMoreResult);
+        Assert.Equal(1, bridgeClient.ListCallCount);
+        Assert.Equal(1, bridgeClient.StatCallCount);
+        Assert.NotNull(firstItem);
+        Assert.Equal("FileB.txt", firstItem.FileName);
+        Assert.False(firstItem.IsDirectory);
+        Assert.Equal(123, firstItem.Size);
+        Assert.Equal("text/plain", firstItem.MimeType);
+    }
+
+    [Fact]
+    public void FsFindFirst_FilePath_WhenListReturnsAccessDenied_DoesNotUseStatFallback()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
+        {
+            ListErrorCode = 3,
+            StatJsonResponse = """
+                {
+                  "id": "2",
+                  "name": "FileB.txt",
+                  "path": "alfresco:/Folder/FileB.txt",
+                  "is_folder": false
+                }
+                """,
+        };
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var firstResult = entryPoints.FsFindFirst("\\alfresco\\Folder\\FileB.txt", out _, out var firstItem);
+
+        Assert.Equal(WfxResultCodes.AccessDenied, firstResult);
+        Assert.Equal(2, bridgeClient.ListCallCount);
+        Assert.Equal(0, bridgeClient.StatCallCount);
+        Assert.Null(firstItem);
+    }
+
+    [Fact]
     public void FsFindFirst_AlfrescoLikeRootItems_WithSlashPath_AreReturned()
     {
         var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
@@ -734,12 +794,15 @@ public sealed class WfxEntryPointsTests
         public int DeleteCallCount { get; private set; }
         public int RenameCallCount { get; private set; }
         public int UploadCallCount { get; private set; }
+        public int ListCallCount { get; private set; }
         public bool FailGetProviders { get; set; }
         public bool LastUploadOverwrite { get; private set; }
+        public int? ListErrorCode { get; set; }
         public int? DeleteErrorCode { get; set; }
         public int? StatErrorCode { get; set; }
         public Queue<int?>? StatErrorCodesSequence { get; set; }
         public int StatCallCount { get; private set; }
+        public string? StatJsonResponse { get; set; }
         public IReadOnlyList<WfxItemDto>? ListItemsOverride { get; set; }
 
         public FakeBridgeClient(string[] providers)
@@ -774,6 +837,18 @@ public sealed class WfxEntryPointsTests
 
         public Task<WfxResponse<WfxListingData>> ListAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
         {
+            ListCallCount++;
+
+            if (ListErrorCode is int listError)
+            {
+                return Task.FromResult(new WfxResponse<WfxListingData>
+                {
+                    Ok = false,
+                    ErrorCode = listError,
+                    Message = "list failed",
+                });
+            }
+
             var items = ListItemsOverride ??
             [
                 new WfxItemDto
@@ -825,6 +900,15 @@ public sealed class WfxEntryPointsTests
             if (StatErrorCode is int errorCode)
             {
                 return Task.FromResult(new WfxResponse<JsonElement> { Ok = false, ErrorCode = errorCode, Message = "stat failed" });
+            }
+
+            if (!string.IsNullOrWhiteSpace(StatJsonResponse))
+            {
+                return Task.FromResult(new WfxResponse<JsonElement>
+                {
+                    Ok = true,
+                    Data = JsonDocument.Parse(StatJsonResponse).RootElement.Clone(),
+                });
             }
 
             return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
