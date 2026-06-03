@@ -134,6 +134,12 @@ public static class WfxNativeExports
                 {
                     effectiveCopyFlags |= CopyFlagOverwrite;
                 }
+                else if (_requestProc is null)
+                {
+                    // TC sometimes calls save/upload without a request callback; in that case
+                    // we prefer to proceed with overwrite rather than fail the editor save.
+                    effectiveCopyFlags |= CopyFlagOverwrite;
+                }
                 else
                 {
                     return WfxResultCodes.WriteError;
@@ -147,6 +153,10 @@ public static class WfxNativeExports
                 if ((effectiveCopyFlags & CopyFlagOverwrite) == 0 && EntryPoints.Value.FsPathExists(remoteFilePath))
                 {
                     if (TryConfirmOverwrite(remoteFilePath))
+                    {
+                        effectiveCopyFlags |= CopyFlagOverwrite;
+                    }
+                    else if (_requestProc is null)
                     {
                         effectiveCopyFlags |= CopyFlagOverwrite;
                     }
