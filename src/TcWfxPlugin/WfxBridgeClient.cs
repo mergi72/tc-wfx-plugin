@@ -10,6 +10,8 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
 {
     private static readonly BridgeJsonSerializerContext SerializerContext = BridgeJsonSerializerContext.Default;
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
+    private const int RawDownloadUnexpectedJsonErrorCode = 500;
+    private const string RawContentHeaderName = "X-Bridge-Raw-Content";
     private const string MinimumBridgeVersionEnvVar = "TC_WFX_MIN_BRIDGE_VERSION";
     private const string DefaultMinimumBridgeVersion = "0.2.0";
 
@@ -135,6 +137,9 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
 
         var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         var mediaType = response.Content.Headers.ContentType?.MediaType;
+        var rawHeader = response.Headers.TryGetValues(RawContentHeaderName, out var rawHeaderValues)
+            ? rawHeaderValues.FirstOrDefault()
+            : null;
 
         if (!response.IsSuccessStatusCode)
         {
@@ -143,28 +148,119 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             return WfxRawDownloadResult.Failed((int)response.StatusCode, $"Raw download failed with HTTP {(int)response.StatusCode}: {body}");
         }
 
-        if (!string.IsNullOrWhiteSpace(mediaType) && mediaType.Contains("json", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(rawHeader, "1", StringComparison.Ordinal))
+        {
+            var rawStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            return WfxRawDownloadResult.Succeeded(new WfxRawDownloadSession(response, rawStream, response.Content.Headers.ContentLength));
+        }
+
+        if (string.Equals(rawHeader, "0", StringComparison.Ordinal))
         {
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             response.Dispose();
-            try
+
+            if (TryParseBridgeEnvelope(body, out var parsedError))
             {
-                var parsed = JsonSerializer.Deserialize(body, SerializerContext.WfxResponseJsonElement);
-                if (parsed is not null && !parsed.Ok)
-                {
-                    return WfxRawDownloadResult.Failed(parsed.ErrorCode, parsed.Message ?? string.Empty);
-                }
-            }
-            catch (JsonException)
-            {
-                // Fallback error below keeps raw payload for easier diagnosis.
+                return WfxRawDownloadResult.Failed(parsedError.ErrorCode, parsedError.Message ?? string.Empty);
             }
 
-            return WfxRawDownloadResult.Failed(0, $"Unexpected JSON response for raw download: {body}");
+            return WfxRawDownloadResult.Failed(RawDownloadUnexpectedJsonErrorCode, $"Unexpected error payload for raw download: {body}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(mediaType) && mediaType.Contains("json", StringComparison.OrdinalIgnoreCase))
+        {
+            var bodyBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            if (TryParseBridgeEnvelope(bodyBytes, out var parsedResponse))
+            {
+                response.Dispose();
+                if (!parsedResponse.Ok)
+                {
+                    return WfxRawDownloadResult.Failed(parsedResponse.ErrorCode, parsedResponse.Message ?? string.Empty);
+                }
+
+                return WfxRawDownloadResult.Failed(RawDownloadUnexpectedJsonErrorCode, "Unexpected success envelope for raw download.");
+            }
+
+            // JSON file payloads are valid download content; keep them as binary data.
+            var jsonStream = new MemoryStream(bodyBytes, writable: false);
+            return WfxRawDownloadResult.Succeeded(new WfxRawDownloadSession(response, jsonStream, bodyBytes.LongLength));
         }
 
         var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         return WfxRawDownloadResult.Succeeded(new WfxRawDownloadSession(response, stream, response.Content.Headers.ContentLength));
+    }
+
+    private static bool TryParseBridgeEnvelope(string body, out WfxResponse<JsonElement> response)
+    {
+        response = default!;
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return false;
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize(body, SerializerContext.WfxResponseJsonElement);
+            if (parsed is null)
+            {
+                return false;
+            }
+
+            response = parsed;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryParseBridgeEnvelope(byte[] bodyBytes, out WfxResponse<JsonElement> response)
+    {
+        response = default!;
+        if (bodyBytes.Length == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(bodyBytes);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (!document.RootElement.TryGetProperty("ok", out var okProperty) || (okProperty.ValueKind != JsonValueKind.True && okProperty.ValueKind != JsonValueKind.False))
+            {
+                return false;
+            }
+
+            if (!document.RootElement.TryGetProperty("error_code", out var codeProperty) || codeProperty.ValueKind != JsonValueKind.Number)
+            {
+                return false;
+            }
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize(bodyBytes, SerializerContext.WfxResponseJsonElement);
+            if (parsed is null)
+            {
+                return false;
+            }
+
+            response = parsed;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     public Task<WfxResponse<JsonElement>> UploadAsync(

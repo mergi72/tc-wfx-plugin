@@ -114,6 +114,11 @@ public static class WfxNativeExports
             {
                 effectiveCopyFlags |= CopyFlagOverwrite;
             }
+            else if (_requestProc is null)
+            {
+                // TC may call download/copy without request callback; prefer overwrite over hard failure.
+                effectiveCopyFlags |= CopyFlagOverwrite;
+            }
             else
             {
                 return WfxResultCodes.WriteError;
