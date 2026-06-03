@@ -14,7 +14,6 @@ public static class WfxNativeExports
     public const int RequestTypePassword = 4;
     private const int RequestTypeMsgYesNo = 9;
     private const int RequestBufferLength = 512;
-    private const string TraceFileEnvVar = "TC_WFX_TRACE_FILE";
     private const int BoolSuccess = 1;
     private const int BoolFailure = 0;
 
@@ -95,9 +94,7 @@ public static class WfxNativeExports
     public static int FsDeleteFileW(nint pathPtr)
     {
         var path = Marshal.PtrToStringUni(pathPtr) ?? string.Empty;
-        TraceCallback($"FsDeleteFileW IN path={path}");
         var result = EntryPoints.Value.FsDeleteFile(path);
-        TraceCallback($"FsDeleteFileW OUT result={result} path={path}");
         if (result == WfxResultCodes.Success)
         {
             NotifyTotalCommanderPathChanged(path);
@@ -111,9 +108,7 @@ public static class WfxNativeExports
     public static int FsRemoveDirW(nint pathPtr)
     {
         var path = Marshal.PtrToStringUni(pathPtr) ?? string.Empty;
-        TraceCallback($"FsRemoveDirW IN path={path}");
         var result = EntryPoints.Value.FsDeleteFile(path);
-        TraceCallback($"FsRemoveDirW OUT result={result} path={path}");
         if (result == WfxResultCodes.Success)
         {
             NotifyTotalCommanderPathChanged(path);
@@ -131,9 +126,7 @@ public static class WfxNativeExports
 
         var oldName = Marshal.PtrToStringUni(oldNamePtr) ?? string.Empty;
         var newName = Marshal.PtrToStringUni(newNamePtr) ?? string.Empty;
-        TraceCallback($"FsRenMovFileW IN move={move} old={oldName} new={newName}");
         var result = EntryPoints.Value.FsRenMovFile(oldName, newName, move != 0);
-        TraceCallback($"FsRenMovFileW OUT result={result} move={move} old={oldName} new={newName}");
         return result;
     }
 
@@ -144,7 +137,6 @@ public static class WfxNativeExports
 
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
-        TraceCallback($"FsGetFileW IN copyFlags={copyFlags} remote={remoteName} local={localName}");
 
         var effectiveCopyFlags = copyFlags;
         if ((effectiveCopyFlags & CopyFlagOverwrite) == 0 && File.Exists(localName))
@@ -165,7 +157,6 @@ public static class WfxNativeExports
         }
 
         var result = EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags);
-        TraceCallback($"FsGetFileW OUT result={result} copyFlags={copyFlags} effectiveCopyFlags={effectiveCopyFlags} remote={remoteName} local={localName}");
         return result;
     }
 
@@ -174,7 +165,6 @@ public static class WfxNativeExports
     {
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
-        TraceCallback($"FsPutFileW IN copyFlags={copyFlags} local={localName} remote={remoteName}");
 
         var effectiveCopyFlags = copyFlags;
         if ((effectiveCopyFlags & CopyFlagOverwrite) == 0)
@@ -220,7 +210,6 @@ public static class WfxNativeExports
         }
 
         var result = EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags);
-        TraceCallback($"FsPutFileW OUT result={result} copyFlags={copyFlags} effectiveCopyFlags={effectiveCopyFlags} local={localName} remote={remoteName}");
         return result;
     }
 
@@ -388,23 +377,7 @@ public static class WfxNativeExports
         }
     }
 
-    private static void TraceCallback(string message)
-    {
-        try
-        {
-            var configuredPath = Environment.GetEnvironmentVariable(TraceFileEnvVar);
-            var tracePath = string.IsNullOrWhiteSpace(configuredPath)
-                ? Path.Combine(Path.GetTempPath(), "tc-wfx-plugin-trace.log")
-                : configuredPath;
-
-            var line = $"{DateTime.UtcNow:O} | {message.Replace('\r', ' ').Replace('\n', ' ')}{Environment.NewLine}";
-            File.AppendAllText(tracePath, line);
-        }
-        catch
-        {
-            // Diagnostics only; never break plugin callbacks.
-        }
-    }
+    // Removed TraceCallback method and its usage
 
     private static bool TryConfirmOverwrite(string localPath)
     {
