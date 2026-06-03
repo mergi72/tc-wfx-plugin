@@ -319,7 +319,7 @@ public sealed class WfxEntryPointsTests
         var result = entryPoints.FsDeleteFile("\\alfresco\\existing\\file.txt");
 
         Assert.Equal(WfxResultCodes.AccessDenied, result);
-        Assert.Equal(1, bridgeClient.DeleteCallCount);
+        Assert.Equal(2, bridgeClient.DeleteCallCount);
     }
 
     [Fact]

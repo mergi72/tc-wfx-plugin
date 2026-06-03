@@ -42,11 +42,19 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
-    public async Task Runtime_Delete_AccessDenied_DoesNotRetryAutomatically()
+    public async Task Runtime_Delete_AccessDenied_RetriesAfterAuthReset()
     {
         var client = new FakeBridgeClient
         {
-            DeleteResponse = JsonResponse(false, "{}", errorCode: 403),
+            DeleteResponder = auth =>
+            {
+                if (string.Equals(auth.Username, "first-user", StringComparison.Ordinal))
+                {
+                    return JsonResponse(false, "{}", errorCode: 403);
+                }
+
+                return JsonResponse(true, "{}");
+            },
         };
 
         var authProvider = new SwitchingAuthProvider(
@@ -56,9 +64,9 @@ public sealed class WfxServicesTests
         var runtime = CreateRuntime(client, authProvider);
         var result = await runtime.DeleteAsync(@"\edocat\to-delete.txt");
 
-        Assert.Equal(WfxResultCodes.AccessDenied, result);
-        Assert.Equal(0, authProvider.ResetCount);
-        Assert.Equal(1, client.DeleteCallCount);
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, authProvider.ResetCount);
+        Assert.Equal(2, client.DeleteCallCount);
     }
 
     [Fact]
@@ -730,6 +738,7 @@ public sealed class WfxServicesTests
         public WfxResponse<JsonElement> StatResponse { get; set; } = JsonResponse(true, "{}");
         public Func<BridgeAuthContext, WfxResponse<WfxListingData>>? ListResponder { get; set; }
         public Func<BridgeAuthContext, WfxResponse<JsonElement>>? MkdirResponder { get; set; }
+        public Func<BridgeAuthContext, WfxResponse<JsonElement>>? DeleteResponder { get; set; }
 
         public int GetProvidersCallCount { get; private set; }
         public int ListCallCount { get; private set; }
@@ -767,7 +776,7 @@ public sealed class WfxServicesTests
         public Task<WfxResponse<JsonElement>> DeleteAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
         {
             DeleteCallCount++;
-            return Task.FromResult(DeleteResponse);
+            return Task.FromResult(DeleteResponder is not null ? DeleteResponder(auth) : DeleteResponse);
         }
 
         public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)

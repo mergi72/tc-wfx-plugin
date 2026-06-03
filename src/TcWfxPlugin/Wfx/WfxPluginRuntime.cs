@@ -71,8 +71,7 @@ public sealed class WfxPluginRuntime
     {
         return await RunTransferAsync(
             (_, ct) => _transferService.DeleteAsync(totalCommanderPath, ct),
-            cancellationToken,
-            retryOnAccessDenied: false);
+            cancellationToken);
     }
 
     public async Task<int> RenameAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, CancellationToken cancellationToken = default)
