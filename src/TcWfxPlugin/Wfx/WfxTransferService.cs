@@ -81,6 +81,76 @@ internal sealed class WfxTransferService
             return WfxResultCodes.FileNotFound;
         }
 
+        var rawDownload = await _facade.DownloadRawAsync(sourceProviderPath, _authProvider.GetAuthContext(), cancellationToken);
+        if (rawDownload is not null)
+        {
+            if (!rawDownload.Ok || rawDownload.Session is null)
+            {
+                return WfxBridgeErrorMapper.MapError(rawDownload.ErrorCode);
+            }
+
+            using (rawDownload.Session)
+            {
+                var rawTargetDirectory = Path.GetDirectoryName(localTargetPath);
+                if (!string.IsNullOrWhiteSpace(rawTargetDirectory))
+                {
+                    Directory.CreateDirectory(rawTargetDirectory);
+                }
+
+                var totalBytes = rawDownload.Session.ContentLength;
+                var rawBytesTransferred = 0L;
+                progress?.Report(new WfxTransferProgress
+                {
+                    Operation = "download",
+                    SourcePath = totalCommanderSourcePath,
+                    DestinationPath = localTargetPath,
+                    BytesTransferred = 0,
+                    TotalBytes = totalBytes,
+                    IsCompleted = false,
+                });
+
+                var buffer = new byte[IoChunkSize];
+                await using (var output = new FileStream(localTargetPath, FileMode.Create, FileAccess.Write, FileShare.None, IoChunkSize, useAsync: true))
+                {
+                    while (true)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        var read = await rawDownload.Session.ContentStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+                        if (read == 0)
+                        {
+                            break;
+                        }
+
+                        await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                        rawBytesTransferred += read;
+
+                        progress?.Report(new WfxTransferProgress
+                        {
+                            Operation = "download",
+                            SourcePath = totalCommanderSourcePath,
+                            DestinationPath = localTargetPath,
+                            BytesTransferred = rawBytesTransferred,
+                            TotalBytes = totalBytes,
+                            IsCompleted = totalBytes is long knownTotal ? rawBytesTransferred >= knownTotal : false,
+                        });
+                    }
+                }
+
+                progress?.Report(new WfxTransferProgress
+                {
+                    Operation = "download",
+                    SourcePath = totalCommanderSourcePath,
+                    DestinationPath = localTargetPath,
+                    BytesTransferred = rawBytesTransferred,
+                    TotalBytes = totalBytes ?? rawBytesTransferred,
+                    IsCompleted = true,
+                });
+
+                return WfxResultCodes.Success;
+            }
+        }
+
         var response = await _facade.DownloadAsync(sourceProviderPath, _authProvider.GetAuthContext(), cancellationToken);
         if (!response.Ok || response.Data.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
         {

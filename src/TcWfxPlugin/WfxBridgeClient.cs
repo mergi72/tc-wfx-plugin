@@ -120,6 +120,53 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             cancellationToken);
     }
 
+    public async Task<WfxRawDownloadResult> DownloadRawAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
+    {
+        var compatibilityError = await EnsureBridgeCompatibilityAsync(cancellationToken);
+        if (compatibilityError is not null)
+        {
+            return WfxRawDownloadResult.Failed(426, compatibilityError);
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "bridge/wfx/download-raw")
+        {
+            Content = JsonContent.Create(new WfxPathRequest { Path = providerPath, Auth = auth }, SerializerContext.WfxPathRequest),
+        };
+
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            response.Dispose();
+            return WfxRawDownloadResult.Failed((int)response.StatusCode, $"Raw download failed with HTTP {(int)response.StatusCode}: {body}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(mediaType) && mediaType.Contains("json", StringComparison.OrdinalIgnoreCase))
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            response.Dispose();
+            try
+            {
+                var parsed = JsonSerializer.Deserialize(body, SerializerContext.WfxResponseJsonElement);
+                if (parsed is not null && !parsed.Ok)
+                {
+                    return WfxRawDownloadResult.Failed(parsed.ErrorCode, parsed.Message ?? string.Empty);
+                }
+            }
+            catch (JsonException)
+            {
+                // Fallback error below keeps raw payload for easier diagnosis.
+            }
+
+            return WfxRawDownloadResult.Failed(0, $"Unexpected JSON response for raw download: {body}");
+        }
+
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return WfxRawDownloadResult.Succeeded(new WfxRawDownloadSession(response, stream, response.Content.Headers.ContentLength));
+    }
+
     public Task<WfxResponse<JsonElement>> UploadAsync(
         string destination,
         string fileName,
@@ -302,5 +349,51 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             BaseAddress = uri,
             Timeout = DefaultTimeout,
         };
+    }
+}
+
+public sealed class WfxRawDownloadSession : IDisposable
+{
+    private readonly HttpResponseMessage _response;
+
+    public WfxRawDownloadSession(HttpResponseMessage response, Stream contentStream, long? contentLength)
+    {
+        _response = response;
+        ContentStream = contentStream;
+        ContentLength = contentLength;
+    }
+
+    public Stream ContentStream { get; }
+    public long? ContentLength { get; }
+
+    public void Dispose()
+    {
+        _response.Dispose();
+    }
+}
+
+public sealed class WfxRawDownloadResult
+{
+    private WfxRawDownloadResult(bool ok, int errorCode, string message, WfxRawDownloadSession? session)
+    {
+        Ok = ok;
+        ErrorCode = errorCode;
+        Message = message;
+        Session = session;
+    }
+
+    public bool Ok { get; }
+    public int ErrorCode { get; }
+    public string Message { get; }
+    public WfxRawDownloadSession? Session { get; }
+
+    public static WfxRawDownloadResult Succeeded(WfxRawDownloadSession session)
+    {
+        return new WfxRawDownloadResult(true, 0, string.Empty, session);
+    }
+
+    public static WfxRawDownloadResult Failed(int errorCode, string message)
+    {
+        return new WfxRawDownloadResult(false, errorCode, message, null);
     }
 }

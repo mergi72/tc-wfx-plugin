@@ -112,6 +112,24 @@ public sealed class WfxPluginFacade
         return _bridgeClient.DownloadAsync(providerPath, auth, cancellationToken);
     }
 
+    public async Task<WfxRawDownloadResult?> DownloadRawAsync(
+        string providerPath,
+        BridgeAuthContext auth,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ProviderPath.TryParse(providerPath, out _))
+        {
+            return WfxRawDownloadResult.Failed(404, $"Invalid provider path '{providerPath}'. Expected format provider:/path.");
+        }
+
+        if (_bridgeClient is WfxBridgeClient directClient)
+        {
+            return await directClient.DownloadRawAsync(providerPath, auth, cancellationToken);
+        }
+
+        return null;
+    }
+
     public Task<WfxResponse<JsonElement>> UploadAsync(
         string destination,
         string fileName,
