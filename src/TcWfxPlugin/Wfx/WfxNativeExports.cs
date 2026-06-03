@@ -78,7 +78,13 @@ public static class WfxNativeExports
     public static int FsMkDirW(nint pathPtr)
     {
         var path = Marshal.PtrToStringUni(pathPtr) ?? string.Empty;
-        return EntryPoints.Value.FsMkDir(path);
+        var result = EntryPoints.Value.FsMkDir(path);
+        if (result == WfxResultCodes.Success)
+        {
+            NotifyTotalCommanderPathChanged(path);
+        }
+
+        return result;
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsDeleteFileW")]
@@ -299,6 +305,48 @@ public static class WfxNativeExports
             if (destinationPtr != nint.Zero)
             {
                 Marshal.FreeHGlobal(destinationPtr);
+            }
+        }
+    }
+
+    private static void NotifyTotalCommanderPathChanged(string path)
+    {
+        ProgressProcDelegate? progressProc;
+        int pluginNumber;
+
+        lock (CallbackSyncRoot)
+        {
+            progressProc = _progressProc;
+            pluginNumber = _pluginNumber;
+        }
+
+        if (progressProc is null || string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        nint sourcePtr = nint.Zero;
+        nint targetPtr = nint.Zero;
+        try
+        {
+            sourcePtr = Marshal.StringToHGlobalUni(path);
+            targetPtr = Marshal.StringToHGlobalUni(path);
+            _ = progressProc(pluginNumber, sourcePtr, targetPtr, 100);
+        }
+        catch
+        {
+            // Best-effort refresh hint for TC UI; operation result is already resolved.
+        }
+        finally
+        {
+            if (sourcePtr != nint.Zero)
+            {
+                Marshal.FreeHGlobal(sourcePtr);
+            }
+
+            if (targetPtr != nint.Zero)
+            {
+                Marshal.FreeHGlobal(targetPtr);
             }
         }
     }
