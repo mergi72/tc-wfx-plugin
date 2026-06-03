@@ -144,6 +144,7 @@ public static class WfxNativeExports
 
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
+        TraceCallback($"FsGetFileW IN copyFlags={copyFlags} remote={remoteName} local={localName}");
 
         var effectiveCopyFlags = copyFlags;
         if ((effectiveCopyFlags & CopyFlagOverwrite) == 0 && File.Exists(localName))
@@ -163,7 +164,9 @@ public static class WfxNativeExports
             }
         }
 
-        return EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags);
+        var result = EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags);
+        TraceCallback($"FsGetFileW OUT result={result} copyFlags={copyFlags} effectiveCopyFlags={effectiveCopyFlags} remote={remoteName} local={localName}");
+        return result;
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsPutFileW")]
@@ -171,6 +174,7 @@ public static class WfxNativeExports
     {
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
+        TraceCallback($"FsPutFileW IN copyFlags={copyFlags} local={localName} remote={remoteName}");
 
         var effectiveCopyFlags = copyFlags;
         if ((effectiveCopyFlags & CopyFlagOverwrite) == 0)
@@ -215,7 +219,9 @@ public static class WfxNativeExports
             }
         }
 
-        return EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags);
+        var result = EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags);
+        TraceCallback($"FsPutFileW OUT result={result} copyFlags={copyFlags} effectiveCopyFlags={effectiveCopyFlags} local={localName} remote={remoteName}");
+        return result;
     }
 
     private static void WriteFindData(nint destination, WfxFindData item)

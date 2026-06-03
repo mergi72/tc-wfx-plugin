@@ -236,10 +236,6 @@ public sealed class WfxEntryPoints
     public int FsGetFile(string remoteName, string localName, int copyFlags = 0)
     {
         var options = ParseCopyFlags(copyFlags);
-        if (options.Resume)
-        {
-            return WfxResultCodes.NotSupported;
-        }
 
         // TC may call FsGetFile for plugin->plugin copy. Besides classic "\\provider\\..."
         // paths, TC can also pass a provider path without a leading slash.
@@ -261,11 +257,6 @@ public sealed class WfxEntryPoints
     public int FsPutFile(string localName, string remoteName, int copyFlags)
     {
         var options = ParseCopyFlags(copyFlags);
-        if (options.Resume)
-        {
-            return WfxResultCodes.NotSupported;
-        }
-
         return FsPutFile(localName, remoteName, options.Overwrite);
     }
 

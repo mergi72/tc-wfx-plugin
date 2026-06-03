@@ -511,14 +511,19 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
-    public void FsGetFile_CopyFlagResume_ReturnsNotSupported()
+    public void FsGetFile_CopyFlagResume_IsIgnored()
     {
         var entryPoints = CreateEntryPoints();
         var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
 
         var result = entryPoints.FsGetFile("\\edocat\\file.txt", localPath, copyFlags: 0x04);
 
-        Assert.Equal(WfxResultCodes.NotSupported, result);
+        Assert.Equal(WfxResultCodes.Success, result);
+
+        if (File.Exists(localPath))
+        {
+            File.Delete(localPath);
+        }
     }
 
     [Fact]
@@ -604,7 +609,7 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
-    public void FsPutFile_CopyFlagResume_ReturnsNotSupported()
+    public void FsPutFile_CopyFlagResume_IsIgnored()
     {
         var entryPoints = CreateEntryPoints();
         var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
@@ -614,7 +619,7 @@ public sealed class WfxEntryPointsTests
         {
             var result = entryPoints.FsPutFile(localPath, "\\edocat\\incoming", copyFlags: 0x04);
 
-            Assert.Equal(WfxResultCodes.NotSupported, result);
+            Assert.Equal(WfxResultCodes.Success, result);
         }
         finally
         {
