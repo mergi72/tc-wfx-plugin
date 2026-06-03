@@ -275,6 +275,61 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsRenMovFile_Move_DmsToFso_UsesDownloadThenDelete()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+        var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
+
+        try
+        {
+            var result = entryPoints.FsRenMovFile("\\alfresco\\source\\file.txt", localPath, move: true);
+
+            Assert.Equal(WfxResultCodes.Success, result);
+            Assert.Equal(1, bridgeClient.DownloadCallCount);
+            Assert.Equal(1, bridgeClient.DeleteCallCount);
+            Assert.Equal(0, bridgeClient.RenameCallCount);
+        }
+        finally
+        {
+            if (File.Exists(localPath))
+            {
+                File.Delete(localPath);
+            }
+        }
+    }
+
+    [Fact]
+    public void FsRenMovFile_Move_DmsToDms_UsesBridgeMove()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var result = entryPoints.FsRenMovFile("\\alfresco\\source\\file.txt", "\\alfresco\\target\\file.txt", move: true);
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, bridgeClient.RenameCallCount);
+        Assert.Equal(0, bridgeClient.DownloadCallCount);
+        Assert.Equal(0, bridgeClient.UploadCallCount);
+    }
+
+    [Fact]
+    public void FsRenMovFile_Move_FsoToDms_UsesUploadThenDeletesLocalSource()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+        var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(localPath, "hello");
+
+        var result = entryPoints.FsRenMovFile(localPath, "\\alfresco\\incoming\\file.txt", move: true);
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, bridgeClient.UploadCallCount);
+        Assert.False(File.Exists(localPath));
+        Assert.Equal(0, bridgeClient.RenameCallCount);
+    }
+
+    [Fact]
     public void FsGetFile_InvalidPath_ReturnsFileNotFound()
     {
         var entryPoints = CreateEntryPoints();
@@ -462,6 +517,9 @@ public sealed class WfxEntryPointsTests
         public int GetProvidersCallCount { get; private set; }
         public int CopyCallCount { get; private set; }
         public int DownloadCallCount { get; private set; }
+        public int DeleteCallCount { get; private set; }
+        public int RenameCallCount { get; private set; }
+        public int UploadCallCount { get; private set; }
         public bool FailGetProviders { get; set; }
         public bool LastUploadOverwrite { get; private set; }
         public IReadOnlyList<WfxItemDto>? ListItemsOverride { get; set; }
@@ -538,10 +596,16 @@ public sealed class WfxEntryPointsTests
             => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
 
         public Task<WfxResponse<JsonElement>> DeleteAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+        {
+            DeleteCallCount++;
+            return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+        }
 
         public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+        {
+            RenameCallCount++;
+            return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+        }
 
         public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)
         {
@@ -558,6 +622,7 @@ public sealed class WfxEntryPointsTests
 
         public Task<WfxResponse<JsonElement>> UploadAsync(string destination, string fileName, BridgeAuthContext auth, string? contentBase64, bool overwrite, CancellationToken cancellationToken = default)
         {
+            UploadCallCount++;
             LastUploadOverwrite = overwrite;
             return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
         }

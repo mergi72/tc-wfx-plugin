@@ -46,10 +46,83 @@ public sealed class WfxEntryPoints
     {
         if (move)
         {
-            return _runtime.RenameAsync(oldName, newName).GetAwaiter().GetResult();
+            var sourceIsProviderPath = !LooksLikeWindowsLocalPath(oldName)
+                && TotalCommanderPathMapper.TryToProviderPath(oldName, out _);
+            var destinationIsProviderPath = !LooksLikeWindowsLocalPath(newName)
+                && TotalCommanderPathMapper.TryToProviderPath(newName, out _);
+
+            // dms -> dms move: delegate to bridge move endpoint.
+            if (sourceIsProviderPath && destinationIsProviderPath)
+            {
+                return _runtime.RenameAsync(oldName, newName).GetAwaiter().GetResult();
+            }
+
+            // dms -> fso move: download to local target then delete source on bridge.
+            if (sourceIsProviderPath && !destinationIsProviderPath)
+            {
+                var downloadResult = _runtime.GetFileAsync(oldName, newName).GetAwaiter().GetResult();
+                if (downloadResult != WfxResultCodes.Success)
+                {
+                    return downloadResult;
+                }
+
+                return _runtime.DeleteAsync(oldName).GetAwaiter().GetResult();
+            }
+
+            // fso -> dms move: upload from local source then delete local source.
+            if (!sourceIsProviderPath && destinationIsProviderPath)
+            {
+                var uploadResult = _runtime.PutFileAsync(oldName, newName, overwrite: true).GetAwaiter().GetResult();
+                if (uploadResult != WfxResultCodes.Success)
+                {
+                    return uploadResult;
+                }
+
+                try
+                {
+                    if (File.Exists(oldName))
+                    {
+                        File.Delete(oldName);
+                    }
+                    else if (Directory.Exists(oldName))
+                    {
+                        Directory.Delete(oldName, recursive: true);
+                    }
+                }
+                catch (IOException)
+                {
+                    return WfxResultCodes.WriteError;
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    return WfxResultCodes.WriteError;
+                }
+
+                return WfxResultCodes.Success;
+            }
+
+            return WfxResultCodes.FileNotFound;
         }
 
         return _runtime.CopyAsync(oldName, newName).GetAwaiter().GetResult();
+    }
+
+    private static bool LooksLikeWindowsLocalPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        if (path.Length >= 3
+            && char.IsLetter(path[0])
+            && path[1] == ':'
+            && (path[2] == '\\' || path[2] == '/'))
+        {
+            return true;
+        }
+
+        return path.StartsWith("\\\\", StringComparison.Ordinal);
     }
 
     public int FsGetFile(string remoteName, string localName, int copyFlags = 0)
