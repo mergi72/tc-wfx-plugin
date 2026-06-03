@@ -631,6 +631,55 @@ public sealed class WfxServicesTests
         Assert.Equal(1, client.MkdirCallCount);
     }
 
+    [Fact]
+    public async Task Runtime_MkDir_Success_InvalidateFindContexts()
+    {
+        var client = new FakeBridgeClient
+        {
+            ListResponse = new WfxResponse<WfxListingData>
+            {
+                Ok = true,
+                Data = new WfxListingData
+                {
+                    Provider = "edocat",
+                    Path = "edocat:/",
+                    Total = 2,
+                    Items =
+                    [
+                        new WfxItemDto
+                        {
+                            Id = "1",
+                            Name = "A",
+                            Path = "edocat:/A",
+                            IsFolder = true,
+                        },
+                        new WfxItemDto
+                        {
+                            Id = "2",
+                            Name = "B",
+                            Path = "edocat:/B",
+                            IsFolder = true,
+                        },
+                    ],
+                },
+            },
+            MkdirResponse = JsonResponse(true, "{}"),
+        };
+
+        var runtime = CreateRuntime(client);
+        var (firstCode, handle, firstItem) = await runtime.FindFirstAsync("\\edocat");
+
+        Assert.Equal(WfxResultCodes.Success, firstCode);
+        Assert.NotEqual(0, handle);
+        Assert.NotNull(firstItem);
+
+        var mkdirResult = await runtime.MkDirAsync("\\edocat\\new-dir");
+        Assert.Equal(WfxResultCodes.Success, mkdirResult);
+
+        var nextCode = runtime.FindNext(handle, out _);
+        Assert.Equal(WfxResultCodes.FileNotFound, nextCode);
+    }
+
     private static WfxListingService CreateListingService(FakeBridgeClient bridgeClient)
     {
         var facade = new WfxPluginFacade(bridgeClient);

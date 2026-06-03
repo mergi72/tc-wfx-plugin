@@ -71,6 +71,14 @@ internal sealed class WfxContextManager
         return WfxResultCodes.FileNotFound;
     }
 
+    public void ClearAll()
+    {
+        lock (_syncRoot)
+        {
+            _findContexts.Clear();
+        }
+    }
+
     private void CleanupExpiredNoLock()
     {
         if (_findContextTtl <= TimeSpan.Zero || _findContexts.Count == 0)
