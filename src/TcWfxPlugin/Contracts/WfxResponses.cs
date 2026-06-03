@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace TcWfxPlugin.Contracts;
 
@@ -39,6 +40,7 @@ public sealed class WfxItemDto
     public bool IsFolder { get; init; }
     public long? Size { get; init; }
     public string? MimeType { get; init; }
+    [JsonConverter(typeof(FlexibleDateTimeOffsetConverter))]
     public DateTimeOffset? ModifiedAt { get; init; }
     public bool? IsReadOnly { get; init; }
 }
