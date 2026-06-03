@@ -52,9 +52,9 @@ jobs:
         if: steps.token.outputs.has_token == 'true'
         uses: actions/checkout@v4
         with:
-          repository: mergi72/edocat-bridge
+          repository: mergi72/dms-provider-bridge
           ref: main
-          path: edocat-bridge
+          path: dms-provider-bridge
           token: ${{ secrets.BRIDGE_REPO_TOKEN }}
 
       - name: Setup Python 3.12
@@ -68,12 +68,12 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ./edocat-bridge
+          python -m pip install -e ./dms-provider-bridge
 
       - name: Run bridge integration smoke
         if: steps.token.outputs.has_token == 'true'
         shell: pwsh
-        run: ./scripts/run-bridge-smoke.ps1 -BridgeRepoPath ./edocat-bridge
+        run: ./scripts/run-bridge-smoke.ps1 -BridgeRepoPath ./dms-provider-bridge
 
   protection-gate:
     if: always()

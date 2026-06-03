@@ -1,5 +1,5 @@
 param(
-    [string]$BridgeRepoPath = "../edocat-bridge",
+    [string]$BridgeRepoPath = "../dms-provider-bridge",
     [string]$BridgeHost = "127.0.0.1",
     [int]$BridgePort = 8765,
     [string]$PythonExe = "python"

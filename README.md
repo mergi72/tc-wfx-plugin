@@ -1,14 +1,14 @@
 # tc-wfx-plugin
 
-Separated C# repository for the Total Commander WFX plugin that integrates with `dms-provider-bridge` (repository: `edocat-bridge`).
+Separated C# repository for the Total Commander WFX plugin that integrates with `dms-provider-bridge`.
 
 ## Automation
 
 - CI workflow: `.github/workflows/ci.yml` (restore, build, test on push/PR)
 - Release artifact workflow: `.github/workflows/release-artifact.yml` (manual run or tag `v*`)
 - Release workflow gating: when secret `BRIDGE_REPO_TOKEN` is set, release first runs bridge integration smoke and publishes artifact only if smoke succeeds.
-- Integration smoke workflow job: starts local `dms-provider-bridge` from repository `edocat-bridge`, validates `GET /health`, `GET /bridge/wfx/providers`, and `POST /bridge/wfx/list` using FSO path.
-  - For cross-repo checkout in GitHub Actions, configure secret `BRIDGE_REPO_TOKEN` (read access to `mergi72/edocat-bridge`).
+- Integration smoke workflow job: starts local `dms-provider-bridge`, validates `GET /health`, `GET /bridge/wfx/providers`, and `POST /bridge/wfx/list` using FSO path.
+	- For cross-repo checkout in GitHub Actions, configure secret `BRIDGE_REPO_TOKEN` (read access to `mergi72/dms-provider-bridge`).
 - Branch protection helper: CI publishes final job `protection-gate` that summarizes required job outcomes.
   - Recommended GitHub branch rule for `main`: require status check `protection-gate`.
 	- If GitHub plan does not allow branch protection for private repositories, use process fallback: no direct pushes to `main`; merge only via PR after successful `protection-gate`.
@@ -112,5 +112,5 @@ dotnet publish src/TcWfxPlugin/TcWfxPlugin.csproj --configuration Release -r win
 - Bridge integration smoke (local):
 
 ```powershell
-./scripts/run-bridge-smoke.ps1 -BridgeRepoPath ../edocat-bridge
+./scripts/run-bridge-smoke.ps1 -BridgeRepoPath ../dms-provider-bridge
 ```
