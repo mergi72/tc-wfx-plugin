@@ -527,6 +527,30 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsGetFile_CopyFlagMove_DeletesSourceAfterDownload()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+        var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
+
+        try
+        {
+            var result = entryPoints.FsGetFile("\\alfresco\\file.txt", localPath, copyFlags: 0x01);
+
+            Assert.Equal(WfxResultCodes.Success, result);
+            Assert.Equal(1, bridgeClient.DownloadCallCount);
+            Assert.Equal(1, bridgeClient.DeleteCallCount);
+        }
+        finally
+        {
+            if (File.Exists(localPath))
+            {
+                File.Delete(localPath);
+            }
+        }
+    }
+
+    [Fact]
     public void FsGetFile_WithoutOverwrite_WhenTargetExists_ReturnsWriteError()
     {
         var entryPoints = CreateEntryPoints();

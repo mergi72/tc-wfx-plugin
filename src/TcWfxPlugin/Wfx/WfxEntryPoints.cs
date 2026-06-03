@@ -4,6 +4,7 @@ namespace TcWfxPlugin.Wfx;
 
 public sealed class WfxEntryPoints
 {
+    private const int CopyFlagMove = 0x01;
     private const int CopyFlagOverwrite = 0x02;
     private const int CopyFlagResume = 0x04;
 
@@ -243,7 +244,18 @@ public sealed class WfxEntryPoints
             && TotalCommanderPathMapper.TryToProviderPath(localName, out var destinationProviderPath)
             && sourceProviderPath.Split(':', 2)[0].Equals(destinationProviderPath.Split(':', 2)[0], StringComparison.OrdinalIgnoreCase))
         {
-            return _runtime.CopyAsync(remoteName, localName).GetAwaiter().GetResult();
+            var copyResult = _runtime.CopyAsync(remoteName, localName).GetAwaiter().GetResult();
+            if (copyResult != WfxResultCodes.Success)
+            {
+                return copyResult;
+            }
+
+            if (options.Move)
+            {
+                return FsDeleteFile(remoteName);
+            }
+
+            return WfxResultCodes.Success;
         }
 
         if (!options.Overwrite && File.Exists(localName))
@@ -251,7 +263,18 @@ public sealed class WfxEntryPoints
             return WfxResultCodes.WriteError;
         }
 
-        return _runtime.GetFileAsync(remoteName, localName).GetAwaiter().GetResult();
+        var downloadResult = _runtime.GetFileAsync(remoteName, localName).GetAwaiter().GetResult();
+        if (downloadResult != WfxResultCodes.Success)
+        {
+            return downloadResult;
+        }
+
+        if (options.Move)
+        {
+            return FsDeleteFile(remoteName);
+        }
+
+        return WfxResultCodes.Success;
     }
 
     public int FsPutFile(string localName, string remoteName, int copyFlags)
@@ -285,10 +308,11 @@ public sealed class WfxEntryPoints
         return _runtime.PathExistsAsync(path).GetAwaiter().GetResult();
     }
 
-    private static (bool Overwrite, bool Resume) ParseCopyFlags(int copyFlags)
+    private static (bool Move, bool Overwrite, bool Resume) ParseCopyFlags(int copyFlags)
     {
+        var move = (copyFlags & CopyFlagMove) != 0;
         var overwrite = (copyFlags & CopyFlagOverwrite) != 0;
         var resume = (copyFlags & CopyFlagResume) != 0;
-        return (overwrite, resume);
+        return (move, overwrite, resume);
     }
 }
