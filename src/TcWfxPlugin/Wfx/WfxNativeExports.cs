@@ -14,6 +14,10 @@ public static class WfxNativeExports
     public const int RequestTypePassword = 4;
     private const int RequestTypeMsgYesNo = 9;
     private const int RequestBufferLength = 512;
+    private const uint WmKeyDown = 0x0100;
+    private const uint WmKeyUp = 0x0101;
+    private const int VkControl = 0x11;
+    private const int VkR = 0x52;
 
     private static readonly Lazy<WfxEntryPoints> EntryPoints = new(CreateEntryPoints);
     private static readonly object CallbackSyncRoot = new();
@@ -82,6 +86,7 @@ public static class WfxNativeExports
         if (result == WfxResultCodes.Success)
         {
             NotifyTotalCommanderPathChanged(path);
+            TriggerTotalCommanderRefreshShortcut();
         }
 
         return result;
@@ -343,11 +348,31 @@ public static class WfxNativeExports
             {
                 Marshal.FreeHGlobal(sourcePtr);
             }
-
             if (targetPtr != nint.Zero)
             {
                 Marshal.FreeHGlobal(targetPtr);
             }
+        }
+    }
+
+    private static void TriggerTotalCommanderRefreshShortcut()
+    {
+        try
+        {
+            var hwnd = FindWindowW("TTOTAL_CMD", null);
+            if (hwnd == nint.Zero)
+            {
+                return;
+            }
+
+            _ = PostMessageW(hwnd, WmKeyDown, (nint)VkControl, nint.Zero);
+            _ = PostMessageW(hwnd, WmKeyDown, (nint)VkR, nint.Zero);
+            _ = PostMessageW(hwnd, WmKeyUp, (nint)VkR, nint.Zero);
+            _ = PostMessageW(hwnd, WmKeyUp, (nint)VkControl, nint.Zero);
+        }
+        catch
+        {
+            // Best-effort UI refresh hint for Total Commander.
         }
     }
 
@@ -515,6 +540,12 @@ public static class WfxNativeExports
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
     private delegate int RequestProcDelegate(int pluginNr, int requestType, nint customTitle, nint customText, nint returnedText, int maxLen);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern nint FindWindowW(string? lpClassName, string? lpWindowName);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostMessageW(nint hWnd, uint msg, nint wParam, nint lParam);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct Win32FindDataW
