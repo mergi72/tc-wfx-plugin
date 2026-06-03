@@ -70,7 +70,8 @@ public sealed class WfxPluginRuntime
     {
         return await RunTransferAsync(
             (_, ct) => _transferService.DeleteAsync(totalCommanderPath, ct),
-            cancellationToken);
+            cancellationToken,
+            retryOnAccessDenied: false);
     }
 
     public async Task<int> RenameAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, CancellationToken cancellationToken = default)
@@ -122,7 +123,8 @@ public sealed class WfxPluginRuntime
 
     private async Task<int> RunTransferAsync(
         Func<IProgress<WfxTransferProgress>, CancellationToken, Task<int>> transfer,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retryOnAccessDenied = true)
     {
         CancellationTokenSource transferCts;
         lock (_transferSyncRoot)
@@ -137,7 +139,7 @@ public sealed class WfxPluginRuntime
         {
             var progress = new Progress<WfxTransferProgress>(value => TransferProgressChanged?.Invoke(value));
             var result = await transfer(progress, transferCts.Token);
-            if (result == WfxResultCodes.AccessDenied)
+            if (retryOnAccessDenied && result == WfxResultCodes.AccessDenied)
             {
                 _authProvider.ResetCachedAuth();
                 result = await transfer(progress, transferCts.Token);

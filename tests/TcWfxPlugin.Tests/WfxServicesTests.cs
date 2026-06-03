@@ -42,6 +42,26 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
+    public async Task Runtime_Delete_AccessDenied_DoesNotRetryAutomatically()
+    {
+        var client = new FakeBridgeClient
+        {
+            DeleteResponse = JsonResponse(false, "{}", errorCode: 403),
+        };
+
+        var authProvider = new SwitchingAuthProvider(
+            new BridgeAuthContext { Mode = "credentials", Username = "first-user", Password = "bad" },
+            new BridgeAuthContext { Mode = "credentials", Username = "second-user", Password = "good" });
+
+        var runtime = CreateRuntime(client, authProvider);
+        var result = await runtime.DeleteAsync(@"\edocat\to-delete.txt");
+
+        Assert.Equal(WfxResultCodes.AccessDenied, result);
+        Assert.Equal(0, authProvider.ResetCount);
+        Assert.Equal(1, client.DeleteCallCount);
+    }
+
+    [Fact]
     public void ContextManager_WhenCapacityExceeded_EvictsOldestContext()
     {
         Environment.SetEnvironmentVariable("TC_WFX_MAX_FIND_CONTEXTS", "2");
@@ -714,6 +734,7 @@ public sealed class WfxServicesTests
         public int GetProvidersCallCount { get; private set; }
         public int ListCallCount { get; private set; }
         public int MkdirCallCount { get; private set; }
+        public int DeleteCallCount { get; private set; }
 
         public string? LastUploadDestination { get; private set; }
         public string? LastUploadFileName { get; private set; }
@@ -744,7 +765,10 @@ public sealed class WfxServicesTests
         }
 
         public Task<WfxResponse<JsonElement>> DeleteAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
-            => Task.FromResult(DeleteResponse);
+        {
+            DeleteCallCount++;
+            return Task.FromResult(DeleteResponse);
+        }
 
         public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)
             => Task.FromResult(RenameResponse);

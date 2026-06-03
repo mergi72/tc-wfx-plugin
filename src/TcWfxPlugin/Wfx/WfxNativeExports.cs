@@ -178,10 +178,6 @@ public static class WfxNativeExports
     private static void WriteFindData(nint destination, WfxFindData item)
     {
         var attributes = item.IsDirectory ? FileAttributeDirectory : FileAttributeArchive;
-        if (!item.IsDirectory && !item.IsReadOnly)
-        {
-            attributes |= FileAttributeNormal;
-        }
         if (item.IsReadOnly)
         {
             attributes |= FileAttributeReadOnly;
@@ -211,8 +207,8 @@ public static class WfxNativeExports
         var fileTime = utcDateTime.ToFileTimeUtc();
         return new FILETIME
         {
-            DwLowDateTime = (int)(fileTime & 0xFFFFFFFF),
-            DwHighDateTime = (int)(fileTime >> 32),
+            dwLowDateTime = (int)(fileTime & 0xFFFFFFFF),
+            dwHighDateTime = (int)(fileTime >> 32),
         };
     }
 

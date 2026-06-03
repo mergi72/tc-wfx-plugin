@@ -226,6 +226,45 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsFindFirst_AlfrescoLikeRootItems_WithSlashPath_AreReturned()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
+        {
+            ListItemsOverride =
+            [
+                new WfxItemDto
+                {
+                    Id = "a1",
+                    Name = "03 zakázky v realizaci",
+                    Path = "/",
+                    IsFolder = true,
+                },
+                new WfxItemDto
+                {
+                    Id = "a2",
+                    Name = "04 zakázky ukončené",
+                    Path = "/",
+                    IsFolder = true,
+                },
+            ],
+        };
+
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var firstResult = entryPoints.FsFindFirst("\\alfresco", out var handle, out var firstItem);
+        var secondResult = entryPoints.FsFindNext(handle, out var secondItem);
+
+        Assert.Equal(WfxResultCodes.Success, firstResult);
+        Assert.Equal(WfxResultCodes.Success, secondResult);
+        Assert.NotNull(firstItem);
+        Assert.NotNull(secondItem);
+        Assert.True(firstItem.IsDirectory);
+        Assert.True(secondItem.IsDirectory);
+        Assert.Equal("03 zakázky v realizaci", firstItem.FileName);
+        Assert.Equal("04 zakázky ukončené", secondItem.FileName);
+    }
+
+    [Fact]
     public void FsMkDir_InvalidPath_ReturnsFileNotFound()
     {
         var entryPoints = CreateEntryPoints();
@@ -397,6 +436,7 @@ public sealed class WfxEntryPointsTests
         public int GetProvidersCallCount { get; private set; }
         public bool FailGetProviders { get; set; }
         public bool LastUploadOverwrite { get; private set; }
+        public IReadOnlyList<WfxItemDto>? ListItemsOverride { get; set; }
 
         public FakeBridgeClient(string[] providers)
         {
@@ -430,6 +470,26 @@ public sealed class WfxEntryPointsTests
 
         public Task<WfxResponse<WfxListingData>> ListAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
         {
+            var items = ListItemsOverride ??
+            [
+                new WfxItemDto
+                {
+                    Id = "1",
+                    Name = "FolderA",
+                    Path = "edocat:/FolderA",
+                    IsFolder = true,
+                },
+                new WfxItemDto
+                {
+                    Id = "2",
+                    Name = "FileB.txt",
+                    Path = "edocat:/FileB.txt",
+                    IsFolder = false,
+                    Size = 123,
+                    MimeType = "text/plain",
+                },
+            ];
+
             return Task.FromResult(new WfxResponse<WfxListingData>
             {
                 Ok = true,
@@ -437,26 +497,8 @@ public sealed class WfxEntryPointsTests
                 {
                     Provider = "edocat",
                     Path = providerPath,
-                    Total = 2,
-                    Items =
-                    [
-                        new WfxItemDto
-                        {
-                            Id = "1",
-                            Name = "FolderA",
-                            Path = "edocat:/FolderA",
-                            IsFolder = true,
-                        },
-                        new WfxItemDto
-                        {
-                            Id = "2",
-                            Name = "FileB.txt",
-                            Path = "edocat:/FileB.txt",
-                            IsFolder = false,
-                            Size = 123,
-                            MimeType = "text/plain",
-                        },
-                    ],
+                    Total = items.Count,
+                    Items = items,
                 },
             });
         }
