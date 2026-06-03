@@ -85,7 +85,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
     public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)
     {
         return PostAsync(
-            "bridge/wfx/rename",
+            "bridge/wfx/move",
             new WfxMoveRequest
             {
                 Source = source,
