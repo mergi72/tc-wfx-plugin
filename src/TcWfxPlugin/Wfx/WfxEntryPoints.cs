@@ -40,7 +40,7 @@ public sealed class WfxEntryPoints
     public int FsDeleteFile(string path)
     {
         var result = _runtime.DeleteAsync(path).GetAwaiter().GetResult();
-        return result == WfxResultCodes.FileNotFound ? WfxResultCodes.Success : result;
+        return NormalizeDeleteResult(path, result);
     }
 
     public int FsRenMovFile(string oldName, string newName, bool move)
@@ -69,12 +69,7 @@ public sealed class WfxEntryPoints
                 }
 
                 var deleteResult = _runtime.DeleteAsync(oldName).GetAwaiter().GetResult();
-                if (deleteResult == WfxResultCodes.FileNotFound)
-                {
-                    return WfxResultCodes.Success;
-                }
-
-                return deleteResult;
+                return NormalizeDeleteResult(oldName, deleteResult);
             }
 
             // fso -> dms move: upload from local source then delete local source.
@@ -183,6 +178,17 @@ public sealed class WfxEntryPoints
         catch (UnauthorizedAccessException)
         {
         }
+    }
+
+    private int NormalizeDeleteResult(string path, int result)
+    {
+        if (result == WfxResultCodes.Success || result == WfxResultCodes.FileNotFound)
+        {
+            return WfxResultCodes.Success;
+        }
+
+        var stillExists = _runtime.PathExistsAsync(path).GetAwaiter().GetResult();
+        return stillExists ? result : WfxResultCodes.Success;
     }
 
     public int FsGetFile(string remoteName, string localName, int copyFlags = 0)

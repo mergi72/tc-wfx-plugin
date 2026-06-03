@@ -280,12 +280,45 @@ public sealed class WfxEntryPointsTests
         var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
         {
             DeleteErrorCode = 404,
+            StatErrorCode = 404,
         };
         var entryPoints = CreateEntryPoints(bridgeClient);
 
         var result = entryPoints.FsDeleteFile("\\alfresco\\missing\\file.txt");
 
         Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, bridgeClient.DeleteCallCount);
+    }
+
+    [Fact]
+    public void FsDeleteFile_AccessDenied_ButPathMissing_IsTreatedAsSuccess()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
+        {
+            DeleteErrorCode = 5,
+            StatErrorCode = 404,
+        };
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var result = entryPoints.FsDeleteFile("\\alfresco\\missing\\file.txt");
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, bridgeClient.DeleteCallCount);
+    }
+
+    [Fact]
+    public void FsDeleteFile_AccessDenied_WhenPathStillExists_ReturnsAccessDenied()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
+        {
+            DeleteErrorCode = 3,
+            StatErrorCode = null,
+        };
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var result = entryPoints.FsDeleteFile("\\alfresco\\existing\\file.txt");
+
+        Assert.Equal(WfxResultCodes.AccessDenied, result);
         Assert.Equal(1, bridgeClient.DeleteCallCount);
     }
 
@@ -592,6 +625,7 @@ public sealed class WfxEntryPointsTests
         public bool FailGetProviders { get; set; }
         public bool LastUploadOverwrite { get; private set; }
         public int? DeleteErrorCode { get; set; }
+        public int? StatErrorCode { get; set; }
         public IReadOnlyList<WfxItemDto>? ListItemsOverride { get; set; }
 
         public FakeBridgeClient(string[] providers)
@@ -660,7 +694,14 @@ public sealed class WfxEntryPointsTests
         }
 
         public Task<WfxResponse<JsonElement>> StatAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+        {
+            if (StatErrorCode is int errorCode)
+            {
+                return Task.FromResult(new WfxResponse<JsonElement> { Ok = false, ErrorCode = errorCode, Message = "stat failed" });
+            }
+
+            return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+        }
 
         public Task<WfxResponse<JsonElement>> MkdirAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
             => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
