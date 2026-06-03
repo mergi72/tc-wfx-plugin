@@ -17,6 +17,7 @@ public static class WfxNativeExports
     private const uint WmCommand = 0x0111;
     private const int CmRereadSource = 540;
     private const int ForceRefresh = 1;
+    private static readonly TimeSpan RefreshCommandDelay = TimeSpan.FromMilliseconds(150);
 
     private static readonly Lazy<WfxEntryPoints> EntryPoints = new(CreateEntryPoints);
     private static readonly object CallbackSyncRoot = new();
@@ -85,7 +86,7 @@ public static class WfxNativeExports
         if (result == WfxResultCodes.Success)
         {
             NotifyTotalCommanderPathChanged(path);
-            TriggerTotalCommanderRefreshShortcut();
+            ScheduleTotalCommanderRefresh();
         }
 
         return result;
@@ -352,6 +353,22 @@ public static class WfxNativeExports
                 Marshal.FreeHGlobal(targetPtr);
             }
         }
+    }
+
+    private static void ScheduleTotalCommanderRefresh()
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(RefreshCommandDelay).ConfigureAwait(false);
+                TriggerTotalCommanderRefreshShortcut();
+            }
+            catch
+            {
+                // Best-effort UI refresh hint for Total Commander.
+            }
+        });
     }
 
     private static void TriggerTotalCommanderRefreshShortcut()
