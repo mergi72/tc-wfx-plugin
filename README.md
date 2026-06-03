@@ -79,7 +79,7 @@ Cache can also be invalidated explicitly through `WfxEntryPoints.InvalidateProvi
 - `POST /bridge/wfx/stat`
 - `POST /bridge/wfx/mkdir`
 - `POST /bridge/wfx/delete`
-- `POST /bridge/wfx/rename`
+- `POST /bridge/wfx/move`
 - `POST /bridge/wfx/copy`
 - `POST /bridge/wfx/download`
 - `POST /bridge/wfx/upload`
