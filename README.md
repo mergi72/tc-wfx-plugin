@@ -1,13 +1,13 @@
 # tc-wfx-plugin
 
-Separated C# repository for the Total Commander WFX plugin that integrates with `dms-provider-bridge`.
+Separated C# repository for the Total Commander WFX plugin that integrates with `dms-provider-bridge` (repository: `edocat-bridge`).
 
 ## Automation
 
 - CI workflow: `.github/workflows/ci.yml` (restore, build, test on push/PR)
 - Release artifact workflow: `.github/workflows/release-artifact.yml` (manual run or tag `v*`)
 - Release workflow gating: when secret `BRIDGE_REPO_TOKEN` is set, release first runs bridge integration smoke and publishes artifact only if smoke succeeds.
-- Integration smoke workflow job: starts local `edocat-bridge`, validates `GET /health`, `GET /bridge/wfx/providers`, and `POST /bridge/wfx/list` using FSO path.
+- Integration smoke workflow job: starts local `dms-provider-bridge` from repository `edocat-bridge`, validates `GET /health`, `GET /bridge/wfx/providers`, and `POST /bridge/wfx/list` using FSO path.
   - For cross-repo checkout in GitHub Actions, configure secret `BRIDGE_REPO_TOKEN` (read access to `mergi72/edocat-bridge`).
 - Branch protection helper: CI publishes final job `protection-gate` that summarizes required job outcomes.
   - Recommended GitHub branch rule for `main`: require status check `protection-gate`.
