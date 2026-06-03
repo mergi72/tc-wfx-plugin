@@ -468,6 +468,22 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsRenMovFile_SameProviderPath_WithAndWithoutLeadingSlash_IsHandledAsDelete()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
+        {
+            DeleteErrorCode = 404,
+            StatErrorCode = 404,
+        };
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var result = entryPoints.FsRenMovFile("\\alfresco\\source\\doc.docx", "alfresco\\source\\doc.docx", move: false);
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, bridgeClient.DeleteCallCount);
+    }
+
+    [Fact]
     public void FsRenMovFile_Move_FsoToDms_UsesUploadThenDeletesLocalSource()
     {
         var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });

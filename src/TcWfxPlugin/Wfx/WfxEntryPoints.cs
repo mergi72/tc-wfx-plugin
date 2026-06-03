@@ -220,10 +220,17 @@ public sealed class WfxEntryPoints
             return string.Empty;
         }
 
-        return value
+        var normalized = value
             .Trim()
             .Replace('/', '\\')
             .TrimEnd('\\');
+
+        if (normalized.StartsWith('\\') && !LooksLikeWindowsLocalPath(normalized))
+        {
+            normalized = normalized.TrimStart('\\');
+        }
+
+        return normalized;
     }
 
     public int FsGetFile(string remoteName, string localName, int copyFlags = 0)
