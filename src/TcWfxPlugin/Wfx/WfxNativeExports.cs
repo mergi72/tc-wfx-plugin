@@ -16,6 +16,7 @@ public static class WfxNativeExports
     private const int RequestBufferLength = 512;
     private const uint WmCommand = 0x0111;
     private const int CmRereadSource = 540;
+    private const int ForceRefresh = 1;
 
     private static readonly Lazy<WfxEntryPoints> EntryPoints = new(CreateEntryPoints);
     private static readonly object CallbackSyncRoot = new();
@@ -363,8 +364,8 @@ public static class WfxNativeExports
                 return;
             }
 
-            // Trigger Total Commander built-in panel reread command directly.
-            _ = PostMessageW(hwnd, WmCommand, (nint)CmRereadSource, nint.Zero);
+            // Trigger Total Commander built-in forced reread: cm_RereadSource 1.
+            _ = PostMessageW(hwnd, WmCommand, (nint)CmRereadSource, (nint)ForceRefresh);
         }
         catch
         {
