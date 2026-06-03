@@ -60,7 +60,8 @@ public sealed class WfxEntryPoints
             // dms -> fso move: download to local target then delete source on bridge.
             if (sourceIsProviderPath && !destinationIsProviderPath)
             {
-                var downloadResult = _runtime.GetFileAsync(oldName, newName).GetAwaiter().GetResult();
+                var localTargetPath = ResolveLocalMoveTargetPath(oldName, newName);
+                var downloadResult = _runtime.GetFileAsync(oldName, localTargetPath).GetAwaiter().GetResult();
                 if (downloadResult != WfxResultCodes.Success)
                 {
                     return downloadResult;
@@ -78,25 +79,8 @@ public sealed class WfxEntryPoints
                     return uploadResult;
                 }
 
-                try
-                {
-                    if (File.Exists(oldName))
-                    {
-                        File.Delete(oldName);
-                    }
-                    else if (Directory.Exists(oldName))
-                    {
-                        Directory.Delete(oldName, recursive: true);
-                    }
-                }
-                catch (IOException)
-                {
-                    return WfxResultCodes.WriteError;
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    return WfxResultCodes.WriteError;
-                }
+                // Best-effort cleanup to avoid reporting move failure after successful upload.
+                TryDeleteLocalSourcePath(oldName);
 
                 return WfxResultCodes.Success;
             }
@@ -123,6 +107,75 @@ public sealed class WfxEntryPoints
         }
 
         return path.StartsWith("\\\\", StringComparison.Ordinal);
+    }
+
+    private static string ResolveLocalMoveTargetPath(string sourcePath, string destinationPath)
+    {
+        if (string.IsNullOrWhiteSpace(destinationPath))
+        {
+            return destinationPath;
+        }
+
+        var destinationLooksLikeDirectory = destinationPath.EndsWith("\\", StringComparison.Ordinal)
+            || destinationPath.EndsWith("/", StringComparison.Ordinal)
+            || Directory.Exists(destinationPath);
+
+        if (!destinationLooksLikeDirectory)
+        {
+            return destinationPath;
+        }
+
+        var sourceLeafName = TryGetSourceLeafName(sourcePath);
+        if (string.IsNullOrWhiteSpace(sourceLeafName))
+        {
+            return destinationPath;
+        }
+
+        return Path.Combine(destinationPath, sourceLeafName);
+    }
+
+    private static string TryGetSourceLeafName(string sourcePath)
+    {
+        if (TotalCommanderPathMapper.TryToProviderPath(sourcePath, out var providerPath)
+            && ProviderPath.TryParse(providerPath, out var parsedProviderPath))
+        {
+            var normalized = parsedProviderPath.Path.TrimEnd('/');
+            var slashIndex = normalized.LastIndexOf('/');
+            if (slashIndex >= 0 && slashIndex < normalized.Length - 1)
+            {
+                return normalized[(slashIndex + 1)..];
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalized) && normalized != "/")
+            {
+                return normalized.TrimStart('/');
+            }
+        }
+
+        return Path.GetFileName(sourcePath.TrimEnd('\\', '/'));
+    }
+
+    private static void TryDeleteLocalSourcePath(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+                return;
+            }
+
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     public int FsGetFile(string remoteName, string localName, int copyFlags = 0)

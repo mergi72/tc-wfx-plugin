@@ -300,6 +300,33 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsRenMovFile_Move_DmsToFso_TargetDirectory_AppendsSourceLeafName()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+        var targetDirectory = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(targetDirectory);
+
+        try
+        {
+            var result = entryPoints.FsRenMovFile("\\alfresco\\source\\file.txt", targetDirectory + "\\", move: true);
+            var expectedFile = Path.Combine(targetDirectory, "file.txt");
+
+            Assert.Equal(WfxResultCodes.Success, result);
+            Assert.True(File.Exists(expectedFile));
+            Assert.Equal(1, bridgeClient.DownloadCallCount);
+            Assert.Equal(1, bridgeClient.DeleteCallCount);
+        }
+        finally
+        {
+            if (Directory.Exists(targetDirectory))
+            {
+                Directory.Delete(targetDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void FsRenMovFile_Move_DmsToDms_UsesBridgeMove()
     {
         var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
