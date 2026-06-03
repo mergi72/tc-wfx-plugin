@@ -516,7 +516,7 @@ public sealed class WfxEntryPointsTests
         var entryPoints = CreateEntryPoints();
         var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
 
-        var result = entryPoints.FsGetFile("\\edocat\\file.txt", localPath, copyFlags: 0x04);
+        var result = entryPoints.FsGetFile("\\edocat\\file.txt", localPath, copyFlags: 0x02);
 
         Assert.Equal(WfxResultCodes.Success, result);
 
@@ -535,7 +535,7 @@ public sealed class WfxEntryPointsTests
 
         try
         {
-            var result = entryPoints.FsGetFile("\\alfresco\\file.txt", localPath, copyFlags: 0x01);
+            var result = entryPoints.FsGetFile("\\alfresco\\file.txt", localPath, copyFlags: 0x04);
 
             Assert.Equal(WfxResultCodes.Success, result);
             Assert.Equal(1, bridgeClient.DownloadCallCount);
@@ -581,7 +581,7 @@ public sealed class WfxEntryPointsTests
 
         try
         {
-            var result = entryPoints.FsGetFile("\\edocat\\file.txt", localPath, copyFlags: 0x02);
+            var result = entryPoints.FsGetFile("\\edocat\\file.txt", localPath, copyFlags: 0x01);
 
             Assert.Equal(WfxResultCodes.Success, result);
         }
@@ -600,7 +600,7 @@ public sealed class WfxEntryPointsTests
         var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
         var entryPoints = CreateEntryPoints(bridgeClient);
 
-        var result = entryPoints.FsGetFile("\\edocat\\source\\file.txt", "\\edocat\\target", copyFlags: 0x02);
+        var result = entryPoints.FsGetFile("\\edocat\\source\\file.txt", "\\edocat\\target", copyFlags: 0x01);
 
         Assert.Equal(WfxResultCodes.Success, result);
         Assert.Equal(1, bridgeClient.CopyCallCount);
@@ -613,7 +613,7 @@ public sealed class WfxEntryPointsTests
         var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
         var entryPoints = CreateEntryPoints(bridgeClient);
 
-        var result = entryPoints.FsGetFile("alfresco\\source\\file.txt", "alfresco\\target", copyFlags: 0x02);
+        var result = entryPoints.FsGetFile("alfresco\\source\\file.txt", "alfresco\\target", copyFlags: 0x01);
 
         Assert.Equal(WfxResultCodes.Success, result);
         Assert.Equal(1, bridgeClient.CopyCallCount);
@@ -641,7 +641,7 @@ public sealed class WfxEntryPointsTests
 
         try
         {
-            var result = entryPoints.FsPutFile(localPath, "\\edocat\\incoming", copyFlags: 0x04);
+            var result = entryPoints.FsPutFile(localPath, "\\edocat\\incoming", copyFlags: 0x02);
 
             Assert.Equal(WfxResultCodes.Success, result);
         }
@@ -666,7 +666,7 @@ public sealed class WfxEntryPointsTests
         {
             var withoutOverwrite = entryPoints.FsPutFile(localPath, "\\edocat\\incoming", copyFlags: 0);
             var firstOverwriteFlag = bridgeClient.LastUploadOverwrite;
-            var withOverwrite = entryPoints.FsPutFile(localPath, "\\edocat\\incoming", copyFlags: 0x02);
+            var withOverwrite = entryPoints.FsPutFile(localPath, "\\edocat\\incoming", copyFlags: 0x01);
             var secondOverwriteFlag = bridgeClient.LastUploadOverwrite;
 
             Assert.Equal(WfxResultCodes.Success, withoutOverwrite);

@@ -5,7 +5,7 @@ namespace TcWfxPlugin.Wfx;
 
 public static class WfxNativeExports
 {
-    private const int CopyFlagOverwrite = 0x02;
+    private const int CopyFlagOverwrite = 0x01;
     private const uint FileAttributeReadOnly = 0x01;
     private const uint FileAttributeDirectory = 0x10;
     private const uint FileAttributeArchive = 0x20;

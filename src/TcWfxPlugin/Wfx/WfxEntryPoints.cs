@@ -4,9 +4,9 @@ namespace TcWfxPlugin.Wfx;
 
 public sealed class WfxEntryPoints
 {
-    private const int CopyFlagMove = 0x01;
-    private const int CopyFlagOverwrite = 0x02;
-    private const int CopyFlagResume = 0x04;
+    private const int CopyFlagOverwrite = 0x01;
+    private const int CopyFlagResume = 0x02;
+    private const int CopyFlagMove = 0x04;
 
     private readonly WfxPluginRuntime _runtime;
 
