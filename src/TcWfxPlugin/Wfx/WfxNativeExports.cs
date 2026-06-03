@@ -14,6 +14,9 @@ public static class WfxNativeExports
     public const int RequestTypePassword = 4;
     private const int RequestTypeMsgYesNo = 9;
     private const int RequestBufferLength = 512;
+    private const string TraceFileEnvVar = "TC_WFX_TRACE_FILE";
+    private const int BoolSuccess = 1;
+    private const int BoolFailure = 0;
 
     private static readonly Lazy<WfxEntryPoints> EntryPoints = new(CreateEntryPoints);
     private static readonly object CallbackSyncRoot = new();
@@ -82,35 +85,42 @@ public static class WfxNativeExports
         if (result == WfxResultCodes.Success)
         {
             NotifyTotalCommanderPathChanged(path);
+            return BoolSuccess;
         }
 
-        return result;
+        return BoolFailure;
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsDeleteFileW")]
     public static int FsDeleteFileW(nint pathPtr)
     {
         var path = Marshal.PtrToStringUni(pathPtr) ?? string.Empty;
+        TraceCallback($"FsDeleteFileW IN path={path}");
         var result = EntryPoints.Value.FsDeleteFile(path);
+        TraceCallback($"FsDeleteFileW OUT result={result} path={path}");
         if (result == WfxResultCodes.Success)
         {
             NotifyTotalCommanderPathChanged(path);
+            return BoolSuccess;
         }
 
-        return result;
+        return BoolFailure;
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsRemoveDirW")]
     public static int FsRemoveDirW(nint pathPtr)
     {
         var path = Marshal.PtrToStringUni(pathPtr) ?? string.Empty;
+        TraceCallback($"FsRemoveDirW IN path={path}");
         var result = EntryPoints.Value.FsDeleteFile(path);
+        TraceCallback($"FsRemoveDirW OUT result={result} path={path}");
         if (result == WfxResultCodes.Success)
         {
             NotifyTotalCommanderPathChanged(path);
+            return BoolSuccess;
         }
 
-        return result;
+        return BoolFailure;
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsRenMovFileW")]
@@ -121,7 +131,10 @@ public static class WfxNativeExports
 
         var oldName = Marshal.PtrToStringUni(oldNamePtr) ?? string.Empty;
         var newName = Marshal.PtrToStringUni(newNamePtr) ?? string.Empty;
-        return EntryPoints.Value.FsRenMovFile(oldName, newName, move != 0);
+        TraceCallback($"FsRenMovFileW IN move={move} old={oldName} new={newName}");
+        var result = EntryPoints.Value.FsRenMovFile(oldName, newName, move != 0);
+        TraceCallback($"FsRenMovFileW OUT result={result} move={move} old={oldName} new={newName}");
+        return result;
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsGetFileW")]
@@ -366,6 +379,24 @@ public static class WfxNativeExports
             {
                 Marshal.FreeHGlobal(targetPtr);
             }
+        }
+    }
+
+    private static void TraceCallback(string message)
+    {
+        try
+        {
+            var configuredPath = Environment.GetEnvironmentVariable(TraceFileEnvVar);
+            var tracePath = string.IsNullOrWhiteSpace(configuredPath)
+                ? Path.Combine(Path.GetTempPath(), "tc-wfx-plugin-trace.log")
+                : configuredPath;
+
+            var line = $"{DateTime.UtcNow:O} | {message.Replace('\r', ' ').Replace('\n', ' ')}{Environment.NewLine}";
+            File.AppendAllText(tracePath, line);
+        }
+        catch
+        {
+            // Diagnostics only; never break plugin callbacks.
         }
     }
 
