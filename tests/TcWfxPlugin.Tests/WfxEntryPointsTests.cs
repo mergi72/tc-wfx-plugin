@@ -684,6 +684,21 @@ public sealed class WfxEntryPointsTests
         }
     }
 
+    [Fact]
+    public void FsPutFile_CopyFlagMove_DeletesLocalSourceAfterUpload()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+        var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(localPath, "hello");
+
+        var result = entryPoints.FsPutFile(localPath, "\\edocat\\incoming", copyFlags: 0x04);
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, bridgeClient.UploadCallCount);
+        Assert.False(File.Exists(localPath));
+    }
+
     private static WfxEntryPoints CreateEntryPoints(string[]? providers = null)
     {
         var bridgeClient = new FakeBridgeClient(providers ?? new[] { "edocat", "alfresco", "fso" });

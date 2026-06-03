@@ -280,7 +280,18 @@ public sealed class WfxEntryPoints
     public int FsPutFile(string localName, string remoteName, int copyFlags)
     {
         var options = ParseCopyFlags(copyFlags);
-        return FsPutFile(localName, remoteName, options.Overwrite);
+        var uploadResult = FsPutFile(localName, remoteName, options.Overwrite);
+        if (uploadResult != WfxResultCodes.Success)
+        {
+            return uploadResult;
+        }
+
+        if (options.Move)
+        {
+            TryDeleteLocalSourcePath(localName);
+        }
+
+        return WfxResultCodes.Success;
     }
 
     public int FsPutFile(string localName, string remoteName, bool overwrite)
