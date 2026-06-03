@@ -7,4 +7,6 @@ public sealed class WfxFindData
     public bool IsDirectory { get; init; }
     public long Size { get; init; }
     public string? MimeType { get; init; }
+    public DateTimeOffset? LastWriteTimeUtc { get; init; }
+    public bool IsReadOnly { get; init; }
 }

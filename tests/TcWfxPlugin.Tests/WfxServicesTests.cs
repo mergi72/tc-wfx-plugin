@@ -104,6 +104,8 @@ public sealed class WfxServicesTests
                             IsFolder = false,
                             Size = null,
                             MimeType = "text/plain",
+                            ModifiedAt = DateTimeOffset.Parse("2026-06-03T08:55:12Z"),
+                            IsReadOnly = true,
                         },
                     ],
                 },
@@ -120,6 +122,8 @@ public sealed class WfxServicesTests
         Assert.False(items[0].IsDirectory);
         Assert.Equal(0, items[0].Size);
         Assert.Equal("text/plain", items[0].MimeType);
+        Assert.Equal(DateTimeOffset.Parse("2026-06-03T08:55:12Z"), items[0].LastWriteTimeUtc);
+        Assert.True(items[0].IsReadOnly);
     }
 
     [Fact]

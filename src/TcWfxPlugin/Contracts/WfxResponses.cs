@@ -39,6 +39,8 @@ public sealed class WfxItemDto
     public bool IsFolder { get; init; }
     public long? Size { get; init; }
     public string? MimeType { get; init; }
+    public DateTimeOffset? ModifiedAt { get; init; }
+    public bool? IsReadOnly { get; init; }
 }
 
 public sealed class WfxProvidersData

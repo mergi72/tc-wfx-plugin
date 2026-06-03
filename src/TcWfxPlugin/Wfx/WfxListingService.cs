@@ -101,6 +101,7 @@ internal sealed class WfxListingService
         }
 
         var items = response.Data.Items
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name) && !string.IsNullOrWhiteSpace(item.Path))
             .Select(item => new WfxFindData
             {
                 FileName = item.Name,
@@ -108,6 +109,8 @@ internal sealed class WfxListingService
                 IsDirectory = item.IsFolder,
                 Size = item.Size ?? 0,
                 MimeType = item.MimeType,
+                LastWriteTimeUtc = item.ModifiedAt?.ToUniversalTime(),
+                IsReadOnly = item.IsReadOnly ?? false,
             })
             .ToArray();
 

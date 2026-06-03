@@ -6,6 +6,10 @@ namespace TcWfxPlugin.Wfx;
 public static class WfxNativeExports
 {
     private const int CopyFlagOverwrite = 0x02;
+    private const uint FileAttributeReadOnly = 0x01;
+    private const uint FileAttributeDirectory = 0x10;
+    private const uint FileAttributeArchive = 0x20;
+    private const uint FileAttributeNormal = 0x80;
     public const int RequestTypeUserName = 3;
     public const int RequestTypePassword = 4;
     private const int RequestTypeMsgYesNo = 9;
@@ -173,12 +177,24 @@ public static class WfxNativeExports
 
     private static void WriteFindData(nint destination, WfxFindData item)
     {
+        var attributes = item.IsDirectory ? FileAttributeDirectory : FileAttributeArchive;
+        if (!item.IsDirectory && !item.IsReadOnly)
+        {
+            attributes |= FileAttributeNormal;
+        }
+        if (item.IsReadOnly)
+        {
+            attributes |= FileAttributeReadOnly;
+        }
+
         var findData = new Win32FindDataW
         {
-            DwFileAttributes = item.IsDirectory ? 0x10u : 0x80u,
+            DwFileAttributes = attributes,
             FtCreationTime = default,
             FtLastAccessTime = default,
-            FtLastWriteTime = default,
+            FtLastWriteTime = item.LastWriteTimeUtc.HasValue
+                ? DateTimeToFileTime(item.LastWriteTimeUtc.Value.UtcDateTime)
+                : default,
             NFileSizeHigh = (uint)(item.Size >> 32),
             NFileSizeLow = (uint)(item.Size & 0xFFFFFFFF),
             DwReserved0 = 0,
@@ -188,6 +204,16 @@ public static class WfxNativeExports
         };
 
         Marshal.StructureToPtr(findData, destination, fDeleteOld: false);
+    }
+
+    private static FILETIME DateTimeToFileTime(DateTime utcDateTime)
+    {
+        var fileTime = utcDateTime.ToFileTimeUtc();
+        return new FILETIME
+        {
+            DwLowDateTime = (int)(fileTime & 0xFFFFFFFF),
+            DwHighDateTime = (int)(fileTime >> 32),
+        };
     }
 
     private static void WriteEmptyFindData(nint destination)
