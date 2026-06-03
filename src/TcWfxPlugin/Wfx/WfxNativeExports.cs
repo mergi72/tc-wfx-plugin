@@ -91,7 +91,26 @@ public static class WfxNativeExports
     public static int FsDeleteFileW(nint pathPtr)
     {
         var path = Marshal.PtrToStringUni(pathPtr) ?? string.Empty;
-        return EntryPoints.Value.FsDeleteFile(path);
+        var result = EntryPoints.Value.FsDeleteFile(path);
+        if (result == WfxResultCodes.Success)
+        {
+            NotifyTotalCommanderPathChanged(path);
+        }
+
+        return result;
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "FsRemoveDirW")]
+    public static int FsRemoveDirW(nint pathPtr)
+    {
+        var path = Marshal.PtrToStringUni(pathPtr) ?? string.Empty;
+        var result = EntryPoints.Value.FsDeleteFile(path);
+        if (result == WfxResultCodes.Success)
+        {
+            NotifyTotalCommanderPathChanged(path);
+        }
+
+        return result;
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsRenMovFileW")]

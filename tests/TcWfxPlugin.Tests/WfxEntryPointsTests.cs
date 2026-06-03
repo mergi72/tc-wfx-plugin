@@ -275,6 +275,21 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsDeleteFile_NotFound_IsTreatedAsSuccess()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
+        {
+            DeleteErrorCode = 404,
+        };
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var result = entryPoints.FsDeleteFile("\\alfresco\\missing\\file.txt");
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, bridgeClient.DeleteCallCount);
+    }
+
+    [Fact]
     public void FsRenMovFile_Move_DmsToFso_UsesDownloadThenDelete()
     {
         var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
@@ -322,6 +337,33 @@ public sealed class WfxEntryPointsTests
             if (Directory.Exists(targetDirectory))
             {
                 Directory.Delete(targetDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void FsRenMovFile_Move_DmsToFso_DeleteNotFound_IsTreatedAsSuccess()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
+        {
+            DeleteErrorCode = 404,
+        };
+        var entryPoints = CreateEntryPoints(bridgeClient);
+        var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
+
+        try
+        {
+            var result = entryPoints.FsRenMovFile("\\alfresco\\source\\file.txt", localPath, move: true);
+
+            Assert.Equal(WfxResultCodes.Success, result);
+            Assert.Equal(1, bridgeClient.DownloadCallCount);
+            Assert.Equal(1, bridgeClient.DeleteCallCount);
+        }
+        finally
+        {
+            if (File.Exists(localPath))
+            {
+                File.Delete(localPath);
             }
         }
     }
@@ -549,6 +591,7 @@ public sealed class WfxEntryPointsTests
         public int UploadCallCount { get; private set; }
         public bool FailGetProviders { get; set; }
         public bool LastUploadOverwrite { get; private set; }
+        public int? DeleteErrorCode { get; set; }
         public IReadOnlyList<WfxItemDto>? ListItemsOverride { get; set; }
 
         public FakeBridgeClient(string[] providers)
@@ -625,6 +668,11 @@ public sealed class WfxEntryPointsTests
         public Task<WfxResponse<JsonElement>> DeleteAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
         {
             DeleteCallCount++;
+            if (DeleteErrorCode is int errorCode)
+            {
+                return Task.FromResult(new WfxResponse<JsonElement> { Ok = false, ErrorCode = errorCode, Message = "delete failed" });
+            }
+
             return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
         }
 

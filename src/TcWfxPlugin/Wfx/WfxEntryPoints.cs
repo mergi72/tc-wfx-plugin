@@ -39,7 +39,8 @@ public sealed class WfxEntryPoints
 
     public int FsDeleteFile(string path)
     {
-        return _runtime.DeleteAsync(path).GetAwaiter().GetResult();
+        var result = _runtime.DeleteAsync(path).GetAwaiter().GetResult();
+        return result == WfxResultCodes.FileNotFound ? WfxResultCodes.Success : result;
     }
 
     public int FsRenMovFile(string oldName, string newName, bool move)
@@ -67,7 +68,13 @@ public sealed class WfxEntryPoints
                     return downloadResult;
                 }
 
-                return _runtime.DeleteAsync(oldName).GetAwaiter().GetResult();
+                var deleteResult = _runtime.DeleteAsync(oldName).GetAwaiter().GetResult();
+                if (deleteResult == WfxResultCodes.FileNotFound)
+                {
+                    return WfxResultCodes.Success;
+                }
+
+                return deleteResult;
             }
 
             // fso -> dms move: upload from local source then delete local source.
