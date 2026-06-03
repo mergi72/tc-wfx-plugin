@@ -1,3 +1,5 @@
+using TcWfxPlugin.Core;
+
 namespace TcWfxPlugin.Wfx;
 
 public sealed class WfxEntryPoints
@@ -56,6 +58,16 @@ public sealed class WfxEntryPoints
         if (options.Resume)
         {
             return WfxResultCodes.NotSupported;
+        }
+
+        // TC may call FsGetFile for plugin->plugin copy. In that case the target
+        // path looks like a plugin panel path (e.g. "\\edocat\\...") and should
+        // be handled by direct bridge copy instead of download to local file system.
+        var looksLikePluginTarget = !string.IsNullOrWhiteSpace(localName)
+            && (localName.StartsWith('\\') || localName.StartsWith('/'));
+        if (looksLikePluginTarget && TotalCommanderPathMapper.TryToProviderPath(localName, out _))
+        {
+            return _runtime.CopyAsync(remoteName, localName).GetAwaiter().GetResult();
         }
 
         if (!options.Overwrite && File.Exists(localName))

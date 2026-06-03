@@ -341,6 +341,19 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsGetFile_PluginTargetPath_UsesDirectCopyInsteadOfDownload()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var result = entryPoints.FsGetFile("\\edocat\\source\\file.txt", "\\edocat\\target", copyFlags: 0x02);
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, bridgeClient.CopyCallCount);
+        Assert.Equal(0, bridgeClient.DownloadCallCount);
+    }
+
+    [Fact]
     public void FsPutFile_ValidPath_ReturnsSuccess()
     {
         var entryPoints = CreateEntryPoints();
@@ -434,6 +447,8 @@ public sealed class WfxEntryPointsTests
     {
         private string[] _providers;
         public int GetProvidersCallCount { get; private set; }
+        public int CopyCallCount { get; private set; }
+        public int DownloadCallCount { get; private set; }
         public bool FailGetProviders { get; set; }
         public bool LastUploadOverwrite { get; private set; }
         public IReadOnlyList<WfxItemDto>? ListItemsOverride { get; set; }
@@ -516,10 +531,14 @@ public sealed class WfxEntryPointsTests
             => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
 
         public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+        {
+            CopyCallCount++;
+            return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+        }
 
         public Task<WfxResponse<JsonElement>> DownloadAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
         {
+            DownloadCallCount++;
             var data = JsonDocument.Parse("{" + "\"content_base64\":\"aGVsbG8=\"" + "}").RootElement;
             return Task.FromResult(new WfxResponse<JsonElement> { Ok = true, Data = data });
         }
