@@ -14,10 +14,6 @@ public static class WfxNativeExports
     public const int RequestTypePassword = 4;
     private const int RequestTypeMsgYesNo = 9;
     private const int RequestBufferLength = 512;
-    private const uint WmCommand = 0x0111;
-    private const int CmRereadSource = 540;
-    private const int ForceRefresh = 1;
-    private static readonly TimeSpan RefreshCommandDelay = TimeSpan.FromMilliseconds(150);
 
     private static readonly Lazy<WfxEntryPoints> EntryPoints = new(CreateEntryPoints);
     private static readonly object CallbackSyncRoot = new();
@@ -86,7 +82,6 @@ public static class WfxNativeExports
         if (result == WfxResultCodes.Success)
         {
             NotifyTotalCommanderPathChanged(path);
-            ScheduleTotalCommanderRefresh();
         }
 
         return result;
@@ -355,41 +350,6 @@ public static class WfxNativeExports
         }
     }
 
-    private static void ScheduleTotalCommanderRefresh()
-    {
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(RefreshCommandDelay).ConfigureAwait(false);
-                TriggerTotalCommanderRefreshShortcut();
-            }
-            catch
-            {
-                // Best-effort UI refresh hint for Total Commander.
-            }
-        });
-    }
-
-    private static void TriggerTotalCommanderRefreshShortcut()
-    {
-        try
-        {
-            var hwnd = FindWindowW("TTOTAL_CMD", null);
-            if (hwnd == nint.Zero)
-            {
-                return;
-            }
-
-            // Trigger Total Commander built-in forced reread: cm_RereadSource 1.
-            _ = PostMessageW(hwnd, WmCommand, (nint)CmRereadSource, (nint)ForceRefresh);
-        }
-        catch
-        {
-            // Best-effort UI refresh hint for Total Commander.
-        }
-    }
-
     private static bool TryConfirmOverwrite(string localPath)
     {
         RequestProcDelegate? requestProc;
@@ -554,12 +514,6 @@ public static class WfxNativeExports
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
     private delegate int RequestProcDelegate(int pluginNr, int requestType, nint customTitle, nint customText, nint returnedText, int maxLen);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern nint FindWindowW(string? lpClassName, string? lpWindowName);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool PostMessageW(nint hWnd, uint msg, nint wParam, nint lParam);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct Win32FindDataW
