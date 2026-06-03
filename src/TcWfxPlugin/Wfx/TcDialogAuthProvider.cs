@@ -33,27 +33,35 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                 return _cachedAuth;
             }
 
-            var mode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE") ?? "winuser";
+            var mode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE") ?? "credentials";
             if (string.Equals(mode, "credentials", StringComparison.OrdinalIgnoreCase))
             {
                 var credentialId = Environment.GetEnvironmentVariable("TC_WFX_CREDENTIAL_ID");
+                if (string.IsNullOrWhiteSpace(credentialId))
+                {
+                    credentialId = _credentialTarget;
+                }
+
                 var username = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
                 var password = Environment.GetEnvironmentVariable("TC_WFX_PASSWORD");
                 var token = Environment.GetEnvironmentVariable("TC_WFX_TOKEN");
                 var promptedForCredentials = false;
 
-                if (!_ignoreStoredCredentialsOnce && (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password)))
+                if (!_ignoreStoredCredentialsOnce && !string.IsNullOrWhiteSpace(credentialId))
                 {
-                    if (_credentialStore.TryRead(_credentialTarget, out var storedUsername, out var storedPassword))
+                    _cachedAuth = new BridgeAuthContext
                     {
-                        username = string.IsNullOrWhiteSpace(username) ? storedUsername : username;
-                        password = string.IsNullOrWhiteSpace(password) ? storedPassword : password;
-                    }
+                        Mode = "credentials",
+                        CredentialId = credentialId,
+                        Username = null,
+                        Password = null,
+                        Token = null,
+                    };
+
+                    return _cachedAuth;
                 }
 
-                _ignoreStoredCredentialsOnce = false;
-
-                if (string.IsNullOrWhiteSpace(username))
+                if (string.IsNullOrWhiteSpace(username) && string.IsNullOrWhiteSpace(password) && string.IsNullOrWhiteSpace(token))
                 {
                     username = _requestValue(
                         WfxNativeExports.RequestTypeUserName,
@@ -62,7 +70,7 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                     promptedForCredentials = true;
                 }
 
-                if (string.IsNullOrWhiteSpace(password))
+                if (string.IsNullOrWhiteSpace(password) && string.IsNullOrWhiteSpace(token))
                 {
                     password = _requestValue(
                         WfxNativeExports.RequestTypePassword,
@@ -70,6 +78,8 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                         "Password:");
                     promptedForCredentials = true;
                 }
+
+                _ignoreStoredCredentialsOnce = false;
 
                 if (promptedForCredentials && !string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
                 {
@@ -79,18 +89,31 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
 
                     if (remember)
                     {
-                        _credentialStore.Save(_credentialTarget, username, password);
+                        var saveTarget = string.IsNullOrWhiteSpace(credentialId) ? _credentialTarget : credentialId;
+                        _credentialStore.Save(saveTarget, username, password);
+                        credentialId = saveTarget;
+                        _cachedAuth = new BridgeAuthContext
+                        {
+                            Mode = "credentials",
+                            CredentialId = credentialId,
+                            Username = null,
+                            Password = null,
+                            Token = null,
+                        };
+
+                        return _cachedAuth;
                     }
                     else
                     {
-                        _credentialStore.Delete(_credentialTarget);
+                        var deleteTarget = string.IsNullOrWhiteSpace(credentialId) ? _credentialTarget : credentialId;
+                        _credentialStore.Delete(deleteTarget);
                     }
                 }
 
                 _cachedAuth = new BridgeAuthContext
                 {
                     Mode = "credentials",
-                    CredentialId = credentialId,
+                    CredentialId = null,
                     Username = username,
                     Password = password,
                     Token = token,

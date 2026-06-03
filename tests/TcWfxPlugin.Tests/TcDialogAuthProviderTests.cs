@@ -5,15 +5,55 @@ namespace TcWfxPlugin.Tests;
 public sealed class TcDialogAuthProviderTests
 {
     [Fact]
+    public void GetAuthContext_DefaultMode_UsesCredentialsWithCredentialId()
+    {
+        var oldMode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE");
+        var oldCredentialId = Environment.GetEnvironmentVariable("TC_WFX_CREDENTIAL_ID");
+
+        Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", null);
+        Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", "tc-wfx/bridge");
+
+        try
+        {
+            var store = new FakeCredentialStore
+            {
+                ShouldReadSucceed = true,
+                ReadUserName = "stored-user",
+                ReadPassword = "stored-pass",
+            };
+
+            var provider = new TcDialogAuthProvider(
+                (_, _, _) => throw new InvalidOperationException("Prompt should not be used when stored credential exists."),
+                (_, _) => throw new InvalidOperationException("Yes/No prompt should not be used when stored credential exists."),
+                store,
+                "tc-wfx/bridge");
+
+            var auth = provider.GetAuthContext();
+
+            Assert.Equal("credentials", auth.Mode);
+            Assert.Equal("tc-wfx/bridge", auth.CredentialId);
+            Assert.Null(auth.Username);
+            Assert.Null(auth.Password);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", oldMode);
+            Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", oldCredentialId);
+        }
+    }
+
+    [Fact]
     public void GetAuthContext_CredentialsMode_UsesTcDialogWhenEnvMissing()
     {
         var oldMode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE");
         var oldUser = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
         var oldPassword = Environment.GetEnvironmentVariable("TC_WFX_PASSWORD");
+        var oldCredentialId = Environment.GetEnvironmentVariable("TC_WFX_CREDENTIAL_ID");
 
         Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", "credentials");
         Environment.SetEnvironmentVariable("TC_WFX_USERNAME", null);
         Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", null);
+        Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", null);
 
         try
         {
@@ -26,11 +66,12 @@ public sealed class TcDialogAuthProviderTests
                     WfxNativeExports.RequestTypePassword => "tc-pass",
                     _ => null,
                 };
-            }, (_, _) => false, store, "tc-wfx/bridge");
+            }, (_, _) => false, store, string.Empty);
 
             var auth = provider.GetAuthContext();
 
             Assert.Equal("credentials", auth.Mode);
+            Assert.Null(auth.CredentialId);
             Assert.Equal("tc-user", auth.Username);
             Assert.Equal("tc-pass", auth.Password);
             Assert.False(store.WasSaved);
@@ -40,6 +81,7 @@ public sealed class TcDialogAuthProviderTests
             Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", oldMode);
             Environment.SetEnvironmentVariable("TC_WFX_USERNAME", oldUser);
             Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", oldPassword);
+            Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", oldCredentialId);
         }
     }
 
@@ -78,10 +120,12 @@ public sealed class TcDialogAuthProviderTests
         var oldMode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE");
         var oldUser = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
         var oldPassword = Environment.GetEnvironmentVariable("TC_WFX_PASSWORD");
+        var oldCredentialId = Environment.GetEnvironmentVariable("TC_WFX_CREDENTIAL_ID");
 
         Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", "credentials");
         Environment.SetEnvironmentVariable("TC_WFX_USERNAME", null);
         Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", null);
+        Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", null);
 
         try
         {
@@ -92,11 +136,14 @@ public sealed class TcDialogAuthProviderTests
                 store,
                 "tc-wfx/bridge");
 
+            provider.ResetCachedAuth();
+
             var auth = provider.GetAuthContext();
 
             Assert.Equal("credentials", auth.Mode);
-            Assert.Equal("saved-user", auth.Username);
-            Assert.Equal("saved-pass", auth.Password);
+            Assert.Equal("tc-wfx/bridge", auth.CredentialId);
+            Assert.Null(auth.Username);
+            Assert.Null(auth.Password);
             Assert.True(store.WasSaved);
             Assert.Equal("tc-wfx/bridge", store.LastSavedTarget);
             Assert.Equal("saved-user", store.LastSavedUserName);
@@ -107,6 +154,7 @@ public sealed class TcDialogAuthProviderTests
             Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", oldMode);
             Environment.SetEnvironmentVariable("TC_WFX_USERNAME", oldUser);
             Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", oldPassword);
+            Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", oldCredentialId);
         }
     }
 
@@ -116,10 +164,12 @@ public sealed class TcDialogAuthProviderTests
         var oldMode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE");
         var oldUser = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
         var oldPassword = Environment.GetEnvironmentVariable("TC_WFX_PASSWORD");
+        var oldCredentialId = Environment.GetEnvironmentVariable("TC_WFX_CREDENTIAL_ID");
 
         Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", "credentials");
         Environment.SetEnvironmentVariable("TC_WFX_USERNAME", null);
         Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", null);
+        Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", "tc-wfx/bridge");
 
         try
         {
@@ -139,8 +189,9 @@ public sealed class TcDialogAuthProviderTests
             var auth = provider.GetAuthContext();
 
             Assert.Equal("credentials", auth.Mode);
-            Assert.Equal("stored-user", auth.Username);
-            Assert.Equal("stored-pass", auth.Password);
+            Assert.Equal("tc-wfx/bridge", auth.CredentialId);
+            Assert.Null(auth.Username);
+            Assert.Null(auth.Password);
             Assert.False(store.WasDeleted);
         }
         finally
@@ -148,6 +199,7 @@ public sealed class TcDialogAuthProviderTests
             Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", oldMode);
             Environment.SetEnvironmentVariable("TC_WFX_USERNAME", oldUser);
             Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", oldPassword);
+            Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", oldCredentialId);
         }
     }
 
@@ -157,10 +209,12 @@ public sealed class TcDialogAuthProviderTests
         var oldMode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE");
         var oldUser = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
         var oldPassword = Environment.GetEnvironmentVariable("TC_WFX_PASSWORD");
+        var oldCredentialId = Environment.GetEnvironmentVariable("TC_WFX_CREDENTIAL_ID");
 
         Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", "credentials");
         Environment.SetEnvironmentVariable("TC_WFX_USERNAME", null);
         Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", null);
+        Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", "tc-wfx/bridge");
 
         try
         {
@@ -186,8 +240,10 @@ public sealed class TcDialogAuthProviderTests
             provider.ResetCachedAuth();
             var second = provider.GetAuthContext();
 
-            Assert.Equal("stored-user", first.Username);
-            Assert.Equal("stored-pass", first.Password);
+            Assert.Equal("tc-wfx/bridge", first.CredentialId);
+            Assert.Null(first.Username);
+            Assert.Null(first.Password);
+            Assert.Null(second.CredentialId);
             Assert.Equal("prompt-user", second.Username);
             Assert.Equal("prompt-pass", second.Password);
             Assert.Equal(2, requestCalls);
@@ -197,6 +253,7 @@ public sealed class TcDialogAuthProviderTests
             Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", oldMode);
             Environment.SetEnvironmentVariable("TC_WFX_USERNAME", oldUser);
             Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", oldPassword);
+            Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", oldCredentialId);
         }
     }
 
