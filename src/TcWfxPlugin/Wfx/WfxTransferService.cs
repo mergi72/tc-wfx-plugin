@@ -233,10 +233,31 @@ internal sealed class WfxTransferService
             return WfxResultCodes.FileNotFound;
         }
 
-        var fileName = Path.GetFileName(localSourcePath);
+        var auth = _authProvider.GetAuthContext();
+        ResolveUploadTarget(destinationProviderPath, out var uploadDestinationProviderPath, out var uploadFileNameFromPath, out var destinationLooksLikeFile);
+
+        var fileName = uploadFileNameFromPath;
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            fileName = Path.GetFileName(localSourcePath);
+        }
+
         if (string.IsNullOrWhiteSpace(fileName))
         {
             return WfxResultCodes.WriteError;
+        }
+
+        if (!destinationLooksLikeFile)
+        {
+            var statResponse = await _facade.GetItemInfoAsync(destinationProviderPath, auth, cancellationToken);
+            if (statResponse.Ok && TryGetIsFolder(statResponse.Data, out var isFolder) && !isFolder)
+            {
+                ResolveUploadTarget(destinationProviderPath, out uploadDestinationProviderPath, out uploadFileNameFromPath, out _, destinationLooksLikeFileHint: true);
+                if (!string.IsNullOrWhiteSpace(uploadFileNameFromPath))
+                {
+                    fileName = uploadFileNameFromPath;
+                }
+            }
         }
 
         byte[] content;
@@ -287,14 +308,71 @@ internal sealed class WfxTransferService
         var contentBase64 = Convert.ToBase64String(content);
 
         var response = await _facade.UploadAsync(
-            destinationProviderPath,
+            uploadDestinationProviderPath,
             fileName,
-            _authProvider.GetAuthContext(),
+            auth,
             contentBase64,
             overwrite,
             cancellationToken);
 
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
+    }
+
+    private static void ResolveUploadTarget(
+        string destinationProviderPath,
+        out string uploadDestinationProviderPath,
+        out string uploadFileName,
+        out bool destinationLooksLikeFile,
+        bool destinationLooksLikeFileHint = false)
+    {
+        uploadDestinationProviderPath = destinationProviderPath;
+        uploadFileName = string.Empty;
+        destinationLooksLikeFile = false;
+
+        if (!ProviderPath.TryParse(destinationProviderPath, out var parsed))
+        {
+            return;
+        }
+
+        var normalizedPath = parsed.Path;
+        if (normalizedPath.Length <= 1 || normalizedPath.EndsWith('/'))
+        {
+            return;
+        }
+
+        var slashIndex = normalizedPath.LastIndexOf('/');
+        var leaf = slashIndex >= 0 ? normalizedPath[(slashIndex + 1)..] : normalizedPath.TrimStart('/');
+        if (string.IsNullOrWhiteSpace(leaf))
+        {
+            return;
+        }
+
+        destinationLooksLikeFile = destinationLooksLikeFileHint || leaf.Contains('.', StringComparison.Ordinal);
+        if (!destinationLooksLikeFile)
+        {
+            return;
+        }
+
+        uploadFileName = leaf;
+        var parentPath = slashIndex <= 0 ? "/" : normalizedPath[..slashIndex];
+        uploadDestinationProviderPath = $"{parsed.Provider}:{parentPath}";
+    }
+
+    private static bool TryGetIsFolder(JsonElement data, out bool isFolder)
+    {
+        isFolder = false;
+        if (data.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (!data.TryGetProperty("is_folder", out var isFolderProperty) || isFolderProperty.ValueKind != JsonValueKind.True && isFolderProperty.ValueKind != JsonValueKind.False)
+        {
+            return false;
+        }
+
+        isFolder = isFolderProperty.GetBoolean();
+        return true;
     }
 
     public async Task<bool> PathExistsAsync(string totalCommanderPath, CancellationToken cancellationToken = default)

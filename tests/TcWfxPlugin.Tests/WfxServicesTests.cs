@@ -148,6 +148,48 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
+    public async Task ListingService_IgnoresBridgeItemsWithBlankNameOrPath()
+    {
+        var client = new FakeBridgeClient
+        {
+            ListResponse = new WfxResponse<WfxListingData>
+            {
+                Ok = true,
+                Data = new WfxListingData
+                {
+                    Provider = "edocat",
+                    Path = "edocat:/",
+                    Total = 2,
+                    Items =
+                    [
+                        new WfxItemDto
+                        {
+                            Id = "1",
+                            Name = "",
+                            Path = "edocat:/",
+                            IsFolder = false,
+                        },
+                        new WfxItemDto
+                        {
+                            Id = "2",
+                            Name = "Valid.txt",
+                            Path = "edocat:/Valid.txt",
+                            IsFolder = false,
+                        },
+                    ],
+                },
+            },
+        };
+
+        var service = CreateListingService(client);
+        var (resultCode, items) = await service.ResolveItemsAsync("\\edocat");
+
+        Assert.Equal(WfxResultCodes.Success, resultCode);
+        Assert.Single(items);
+        Assert.Equal("Valid.txt", items[0].FileName);
+    }
+
+    [Fact]
     public async Task ListingService_RootPath_UsesConfiguredProvidersFromEnvironment()
     {
         Environment.SetEnvironmentVariable("TC_WFX_PROVIDERS", "  edocat ; edocat, alfresco  ");
@@ -342,6 +384,36 @@ public sealed class WfxServicesTests
             Assert.Equal(Path.GetFileName(source), client.LastUploadFileName);
             Assert.True(client.LastUploadOverwrite);
             Assert.Equal(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("payload")), client.LastUploadContentBase64);
+        }
+        finally
+        {
+            if (File.Exists(source))
+            {
+                File.Delete(source);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TransferService_PutFile_WhenDestinationIsFile_UsesRemoteFileNameAndParentFolder()
+    {
+        var client = new FakeBridgeClient
+        {
+            UploadResponse = JsonResponse(true, "{}"),
+            StatResponse = JsonResponse(true, "{\"is_folder\":false}"),
+        };
+
+        var service = CreateTransferService(client);
+        var source = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.tmp");
+        await File.WriteAllTextAsync(source, "payload");
+
+        try
+        {
+            var result = await service.PutFileAsync(source, "\\alfresco\\path\\target.docx", overwrite: true);
+
+            Assert.Equal(WfxResultCodes.Success, result);
+            Assert.Equal("alfresco:/path", client.LastUploadDestination);
+            Assert.Equal("target.docx", client.LastUploadFileName);
         }
         finally
         {

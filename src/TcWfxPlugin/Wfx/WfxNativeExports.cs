@@ -42,6 +42,7 @@ public static class WfxNativeExports
         var result = EntryPoints.Value.FsFindFirst(path, out var handle, out var firstItem);
         if (result != WfxResultCodes.Success || firstItem is null)
         {
+            WriteEmptyFindData(findDataPtr);
             return nint.Zero;
         }
 
@@ -55,6 +56,7 @@ public static class WfxNativeExports
         var result = EntryPoints.Value.FsFindNext((int)handle, out var item);
         if (result != WfxResultCodes.Success || item is null)
         {
+            WriteEmptyFindData(findDataPtr);
             return 0;
         }
 
@@ -126,11 +128,23 @@ public static class WfxNativeExports
         var effectiveCopyFlags = copyFlags;
         if ((effectiveCopyFlags & CopyFlagOverwrite) == 0)
         {
+            if (EntryPoints.Value.FsPathExists(remoteName))
+            {
+                if (TryConfirmOverwrite(remoteName))
+                {
+                    effectiveCopyFlags |= CopyFlagOverwrite;
+                }
+                else
+                {
+                    return WfxResultCodes.WriteError;
+                }
+            }
+
             var fileName = Path.GetFileName(localName);
             if (!string.IsNullOrWhiteSpace(fileName))
             {
                 var remoteFilePath = CombinePath(remoteName, fileName);
-                if (EntryPoints.Value.FsPathExists(remoteFilePath))
+                if ((effectiveCopyFlags & CopyFlagOverwrite) == 0 && EntryPoints.Value.FsPathExists(remoteFilePath))
                 {
                     if (TryConfirmOverwrite(remoteFilePath))
                     {
@@ -160,6 +174,30 @@ public static class WfxNativeExports
             DwReserved0 = 0,
             DwReserved1 = 0,
             CFileName = item.FileName,
+            CAlternateFileName = string.Empty,
+        };
+
+        Marshal.StructureToPtr(findData, destination, fDeleteOld: false);
+    }
+
+    private static void WriteEmptyFindData(nint destination)
+    {
+        if (destination == nint.Zero)
+        {
+            return;
+        }
+
+        var findData = new Win32FindDataW
+        {
+            DwFileAttributes = 0,
+            FtCreationTime = default,
+            FtLastAccessTime = default,
+            FtLastWriteTime = default,
+            NFileSizeHigh = 0,
+            NFileSizeLow = 0,
+            DwReserved0 = 0,
+            DwReserved1 = 0,
+            CFileName = string.Empty,
             CAlternateFileName = string.Empty,
         };
 
