@@ -45,15 +45,14 @@ public sealed class WfxEntryPoints
 
     public int FsRenMovFile(string oldName, string newName, bool move)
     {
+        // TC may issue same-path callbacks during delete workflows, regardless of move flag.
+        if (AreSamePath(oldName, newName))
+        {
+            return FsDeleteFile(oldName);
+        }
+
         if (move)
         {
-            // TC may issue move callbacks with identical source/target while performing
-            // delete-on-move cleanup. Treat this as a delete operation.
-            if (AreSamePath(oldName, newName))
-            {
-                return FsDeleteFile(oldName);
-            }
-
             var sourceIsProviderPath = !LooksLikeWindowsLocalPath(oldName)
                 && TotalCommanderPathMapper.TryToProviderPath(oldName, out _);
             var destinationIsProviderPath = !LooksLikeWindowsLocalPath(newName)

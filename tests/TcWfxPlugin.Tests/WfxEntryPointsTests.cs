@@ -434,6 +434,24 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsRenMovFile_RenameFlagFalse_SamePath_IsHandledAsDelete()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
+        {
+            DeleteErrorCode = 404,
+            StatErrorCode = 404,
+        };
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var path = "\\alfresco\\source\\ping_copy.xls";
+        var result = entryPoints.FsRenMovFile(path, path, move: false);
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, bridgeClient.DeleteCallCount);
+        Assert.Equal(0, bridgeClient.CopyCallCount);
+    }
+
+    [Fact]
     public void FsRenMovFile_Move_FsoToDms_UsesUploadThenDeletesLocalSource()
     {
         var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
