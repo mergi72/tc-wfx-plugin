@@ -40,7 +40,7 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 - Root listing (`\` and `\*.*`) is served as provider folders resolved dynamically from `GET /bridge/wfx/providers`.
 - Wildcard listing masks in paths (for example `\edocat\folder\*.*`) are normalized to directory provider paths.
 - Root provider list is cached with TTL to reduce bridge calls during panel navigation.
-- On bridge fetch failure, last known cached provider list is reused (stale fallback) before default fallback is used.
+- Root providers come from the bridge response. If `TC_WFX_PROVIDERS` is set, it overrides the bridge response. If the bridge is unavailable and no cache is present, the root listing stays empty instead of falling back to hardcoded providers.
 - Find contexts are cleaned up automatically by idle TTL and bounded by maximum context count to prevent handle leaks.
 
 ## Native Exports
@@ -65,7 +65,7 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 - `TC_WFX_USERNAME`
 - `TC_WFX_PASSWORD`
 - `TC_WFX_TOKEN`
-- `TC_WFX_PROVIDERS` (optional comma/semicolon-separated root provider override; when missing, providers are resolved from bridge, then fallback to `edocat,alfresco,fso`)
+- `TC_WFX_PROVIDERS` (optional comma/semicolon-separated root provider override; when missing, providers are resolved from bridge)
 - `TC_WFX_PROVIDERS_CACHE_SECONDS` (optional TTL for cached root providers loaded from bridge; default `30`, `0` disables cache)
 - `TC_WFX_FIND_CONTEXT_TTL_SECONDS` (optional TTL for inactive find contexts; default `600`, `0` disables TTL cleanup)
 - `TC_WFX_MAX_FIND_CONTEXTS` (optional hard limit for concurrently tracked find contexts; default `512`)
