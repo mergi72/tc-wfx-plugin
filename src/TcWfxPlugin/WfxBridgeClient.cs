@@ -33,6 +33,10 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
     public WfxBridgeClient(HttpClient httpClient)
     {
         _httpClient = httpClient;
+        if (_httpClient.Timeout != Timeout.InfiniteTimeSpan && _httpClient.Timeout < UploadTimeout)
+        {
+            _httpClient.Timeout = UploadTimeout;
+        }
         _minimumBridgeVersion = ResolveMinimumBridgeVersion();
     }
 

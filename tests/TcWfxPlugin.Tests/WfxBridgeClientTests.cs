@@ -109,6 +109,40 @@ public sealed class WfxBridgeClientTests
         Assert.Contains("Access denied", result.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task UploadRawAsync_WhenHttpClientTimeoutIsShorterThanUploadTimeout_UsesUploadTimeout()
+    {
+        var handler = new DelayedQueueHttpMessageHandler(
+            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"status\":\"ok\",\"service\":\"dms-provider-bridge\",\"version\":\"0.2.0\"}"),
+            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"ok\":true,\"error_code\":0,\"message\":\"\",\"data\":null}"));
+
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://127.0.0.1:8765/"),
+            Timeout = TimeSpan.FromMilliseconds(100),
+        };
+
+        var client = new WfxBridgeClient(httpClient);
+        var tempFile = Path.GetTempFileName();
+        await File.WriteAllTextAsync(tempFile, "payload");
+
+        try
+        {
+            var result = await client.UploadRawAsync(
+                "alfresco:/contracts",
+                "upload.txt",
+                new BridgeAuthContext { Mode = "credentials", CredentialId = "tc-wfx/bridge" },
+                tempFile,
+                overwrite: false);
+
+            Assert.True(result.Ok);
+        }
+        finally
+        {
+            File.Delete(tempFile);
+        }
+    }
+
     private static HttpResponseMessage HttpResponseMessageForJson(HttpStatusCode statusCode, string json)
     {
         return new HttpResponseMessage(statusCode)
@@ -141,6 +175,38 @@ public sealed class WfxBridgeClientTests
             }
 
             return Task.FromResult(response);
+        }
+    }
+
+    private sealed class DelayedQueueHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Queue<HttpResponseMessage> _responses;
+
+        public DelayedQueueHttpMessageHandler(params HttpResponseMessage[] responses)
+        {
+            _responses = new Queue<HttpResponseMessage>(responses);
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (_responses.Count == 0)
+            {
+                throw new InvalidOperationException($"No queued response for request {request.Method} {request.RequestUri}.");
+            }
+
+            if (request.RequestUri?.AbsolutePath.EndsWith("/bridge/wfx/upload-raw", StringComparison.Ordinal) == true)
+            {
+                await Task.Delay(300, cancellationToken);
+            }
+
+            var response = _responses.Dequeue();
+            response.RequestMessage = request;
+            if (response.Content is not null && response.Content.Headers.ContentType is null)
+            {
+                response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            }
+
+            return response;
         }
     }
 }
