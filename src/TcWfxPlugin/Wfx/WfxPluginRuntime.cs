@@ -64,28 +64,32 @@ public sealed class WfxPluginRuntime
         return await RunTransferAsync(
             (_, ct) => _transferService.MkDirAsync(totalCommanderPath, ct),
             cancellationToken,
-            retryOnAccessDenied: false);
+            retryOnAccessDenied: false,
+            invalidateRootProvidersCacheOnSuccess: true);
     }
 
     public async Task<int> DeleteAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
     {
         return await RunTransferAsync(
             (_, ct) => _transferService.DeleteAsync(totalCommanderPath, ct),
-            cancellationToken);
+            cancellationToken,
+            invalidateRootProvidersCacheOnSuccess: true);
     }
 
     public async Task<int> RenameAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, CancellationToken cancellationToken = default)
     {
         return await RunTransferAsync(
             (_, ct) => _transferService.RenameAsync(totalCommanderSourcePath, totalCommanderDestinationPath, ct),
-            cancellationToken);
+            cancellationToken,
+            invalidateRootProvidersCacheOnSuccess: true);
     }
 
     public async Task<int> CopyAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, CancellationToken cancellationToken = default)
     {
         return await RunTransferAsync(
             (_, ct) => _transferService.CopyAsync(totalCommanderSourcePath, totalCommanderDestinationPath, ct),
-            cancellationToken);
+            cancellationToken,
+            invalidateRootProvidersCacheOnSuccess: true);
     }
 
     public async Task<int> GetFileAsync(string totalCommanderSourcePath, string localTargetPath, CancellationToken cancellationToken = default)
@@ -99,7 +103,8 @@ public sealed class WfxPluginRuntime
     {
         return await RunTransferAsync(
             (progress, ct) => _transferService.PutFileAsync(localSourcePath, totalCommanderDestinationPath, overwrite, progress, ct),
-            cancellationToken);
+            cancellationToken,
+            invalidateRootProvidersCacheOnSuccess: true);
     }
 
     public async Task<bool> PathExistsAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
@@ -124,7 +129,8 @@ public sealed class WfxPluginRuntime
     private async Task<int> RunTransferAsync(
         Func<IProgress<WfxTransferProgress>, CancellationToken, Task<int>> transfer,
         CancellationToken cancellationToken,
-        bool retryOnAccessDenied = true)
+        bool retryOnAccessDenied = true,
+        bool invalidateRootProvidersCacheOnSuccess = false)
     {
         CancellationTokenSource transferCts;
         lock (_transferSyncRoot)
@@ -143,6 +149,11 @@ public sealed class WfxPluginRuntime
             {
                 _authProvider.ResetCachedAuth();
                 result = await transfer(progress, transferCts.Token);
+            }
+
+            if (invalidateRootProvidersCacheOnSuccess && result == WfxResultCodes.Success)
+            {
+                _listingService.InvalidateRootProvidersCache();
             }
 
             return result;

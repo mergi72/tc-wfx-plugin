@@ -176,6 +176,66 @@ public sealed class WfxEntryPointsTests
         Assert.Equal(2, bridgeClient.GetProvidersCallCount);
     }
 
+    [Theory]
+    [InlineData("mkdir")]
+    [InlineData("delete")]
+    [InlineData("move")]
+    [InlineData("copy")]
+    [InlineData("upload")]
+    public void MutatingOperations_InvalidateRootProvidersCache(string operation)
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "dynamic-a", "dynamic-b" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var firstResult = entryPoints.FsFindFirst("\\", out var firstHandle, out _);
+        var firstClose = entryPoints.FsFindClose(firstHandle);
+
+        Assert.Equal(WfxResultCodes.Success, firstResult);
+        Assert.Equal(WfxResultCodes.Success, firstClose);
+        Assert.Equal(1, bridgeClient.GetProvidersCallCount);
+
+        switch (operation)
+        {
+            case "mkdir":
+                Assert.Equal(WfxResultCodes.Success, entryPoints.FsMkDir("\\dynamic-a\\new-dir"));
+                break;
+            case "delete":
+                Assert.Equal(WfxResultCodes.Success, entryPoints.FsDeleteFile("\\dynamic-a\\to-delete.txt"));
+                break;
+            case "move":
+                Assert.Equal(WfxResultCodes.Success, entryPoints.FsRenMovFile("\\dynamic-a\\source.txt", "\\dynamic-a\\renamed.txt", move: true));
+                break;
+            case "copy":
+                Assert.Equal(WfxResultCodes.Success, entryPoints.FsRenMovFile("\\dynamic-a\\source.txt", "\\dynamic-a\\copy.txt", move: false));
+                break;
+            case "upload":
+                var localPath = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-cache-{Guid.NewGuid():N}.txt");
+                File.WriteAllText(localPath, "hello");
+                try
+                {
+                    Assert.Equal(WfxResultCodes.Success, entryPoints.FsPutFile(localPath, "\\dynamic-a\\incoming", copyFlags: 0));
+                }
+                finally
+                {
+                    if (File.Exists(localPath))
+                    {
+                        File.Delete(localPath);
+                    }
+                }
+
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(operation), operation, null);
+        }
+
+        var secondResult = entryPoints.FsFindFirst("\\", out var secondHandle, out _);
+        var secondClose = entryPoints.FsFindClose(secondHandle);
+
+        Assert.Equal(WfxResultCodes.Success, secondResult);
+        Assert.Equal(WfxResultCodes.Success, secondClose);
+        Assert.Equal(2, bridgeClient.GetProvidersCallCount);
+    }
+
     [Fact]
     public void FsFindNext_ExpiredHandle_ReturnsFileNotFound()
     {
