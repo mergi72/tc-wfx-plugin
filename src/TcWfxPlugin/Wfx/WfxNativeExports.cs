@@ -190,20 +190,25 @@ public static class WfxNativeExports
             var fileName = Path.GetFileName(localName);
             if (!string.IsNullOrWhiteSpace(fileName))
             {
-                var remoteFilePath = CombinePath(remoteName, fileName);
-                if ((effectiveCopyFlags & CopyFlagOverwrite) == 0 && EntryPoints.Value.FsPathExists(remoteFilePath))
+                // If remoteName already points to the target file, avoid appending the same
+                // file name again (which would produce "...file.ext/file.ext").
+                if (!PathEndsWithLeafName(remoteName, fileName))
                 {
-                    if (TryConfirmOverwrite(remoteFilePath))
+                    var remoteFilePath = CombinePath(remoteName, fileName);
+                    if ((effectiveCopyFlags & CopyFlagOverwrite) == 0 && EntryPoints.Value.FsPathExists(remoteFilePath))
                     {
-                        effectiveCopyFlags |= CopyFlagOverwrite;
-                    }
-                    else if (_requestProc is null)
-                    {
-                        effectiveCopyFlags |= CopyFlagOverwrite;
-                    }
-                    else
-                    {
-                        return WfxResultCodes.WriteError;
+                        if (TryConfirmOverwrite(remoteFilePath))
+                        {
+                            effectiveCopyFlags |= CopyFlagOverwrite;
+                        }
+                        else if (_requestProc is null)
+                        {
+                            effectiveCopyFlags |= CopyFlagOverwrite;
+                        }
+                        else
+                        {
+                            return WfxResultCodes.WriteError;
+                        }
                     }
                 }
             }
@@ -536,6 +541,24 @@ public static class WfxNativeExports
 
         var trimmed = directoryPath.TrimEnd('\\', '/');
         return $"{trimmed}\\{fileName}";
+    }
+
+    private static bool PathEndsWithLeafName(string path, string leafName)
+    {
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(leafName))
+        {
+            return false;
+        }
+
+        var normalized = path.Trim().TrimEnd('\\', '/');
+        if (normalized.Length == 0)
+        {
+            return false;
+        }
+
+        var slashIndex = Math.Max(normalized.LastIndexOf('\\'), normalized.LastIndexOf('/'));
+        var currentLeaf = slashIndex >= 0 ? normalized[(slashIndex + 1)..] : normalized;
+        return string.Equals(currentLeaf, leafName, StringComparison.OrdinalIgnoreCase);
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]

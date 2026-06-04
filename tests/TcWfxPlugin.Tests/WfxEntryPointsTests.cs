@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Reflection;
 using TcWfxPlugin.Bridge;
 using TcWfxPlugin.Contracts;
 using TcWfxPlugin.Wfx;
@@ -757,6 +758,22 @@ public sealed class WfxEntryPointsTests
         Assert.Equal(WfxResultCodes.Success, result);
         Assert.Equal(1, bridgeClient.UploadCallCount);
         Assert.False(File.Exists(localPath));
+    }
+
+    [Fact]
+    public void PathEndsWithLeafName_DetectsAlreadyAppendedFileLeaf()
+    {
+        var method = typeof(WfxNativeExports).GetMethod(
+            "PathEndsWithLeafName",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+
+        var sameLeaf = (bool)method!.Invoke(null, ["\\alfresco\\A\\B\\file.zip", "file.zip"])!;
+        var differentLeaf = (bool)method.Invoke(null, ["\\alfresco\\A\\B", "file.zip"])!;
+
+        Assert.True(sameLeaf);
+        Assert.False(differentLeaf);
     }
 
     private static WfxEntryPoints CreateEntryPoints(string[]? providers = null)
