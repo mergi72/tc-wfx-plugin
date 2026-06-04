@@ -388,28 +388,8 @@ public static class WfxNativeExports
 
     private static void NotifyTotalCommanderPathChanged(string path)
     {
-        ProgressProcDelegate? progressProc;
-        int pluginNumber;
-
-        lock (CallbackSyncRoot)
-        {
-            progressProc = _progressProc;
-            pluginNumber = _pluginNumber;
-        }
-
-        if (progressProc is null || string.IsNullOrWhiteSpace(path))
-        {
-            return;
-        }
-
-        try
-        {
-            _ = progressProc(pluginNumber, path, path, 100);
-        }
-        catch
-        {
-            // Best-effort refresh hint for TC UI; operation result is already resolved.
-        }
+        _ = path;
+        // Intentionally disabled for diagnostics: ProgressProc should report real transfer progress only.
     }
 
     private static int? TryRunProgressSelfTest(string sourcePath, string destinationPath)
