@@ -219,6 +219,7 @@ public static class WfxNativeExports
         }
 
         var directProgress = CreateDirectProgressReporter("download", remoteName, localName);
+        directProgress?.Report(new WfxTransferProgress { Operation = "download", SourcePath = remoteName, DestinationPath = localName, BytesTransferred = 0, TotalBytes = null });
         var result = EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags, directProgress);
         return result;
     }
@@ -284,6 +285,7 @@ public static class WfxNativeExports
         }
 
         var directProgress = CreateDirectProgressReporter("upload", localName, remoteName);
+        directProgress?.Report(new WfxTransferProgress { Operation = "upload", SourcePath = localName, DestinationPath = remoteName, BytesTransferred = 0, TotalBytes = null });
         var result = EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags, directProgress);
         return result;
     }
