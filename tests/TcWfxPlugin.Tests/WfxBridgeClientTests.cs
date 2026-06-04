@@ -12,7 +12,7 @@ public sealed class WfxBridgeClientTests
     public async Task DownloadRawAsync_WhenBridgeReturnsJsonEnvelope_ReturnsFailureWithNonZeroErrorCode()
     {
         var handler = new QueueHttpMessageHandler(
-            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"status\":\"ok\",\"service\":\"edocat-bridge\",\"version\":\"0.2.0\"}"),
+            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"status\":\"ok\",\"service\":\"dms-provider-bridge\",\"version\":\"0.2.0\"}"),
             HttpResponseMessageForJson(HttpStatusCode.OK, "{\"ok\":true,\"error_code\":0,\"message\":null,\"data\":{\"content_base64\":\"aGVsbG8=\"}}"));
 
         using var httpClient = new HttpClient(handler)
@@ -35,7 +35,7 @@ public sealed class WfxBridgeClientTests
     {
         var jsonFilePayload = "{\"name\":\"default_11\",\"version\":1}";
         var handler = new QueueHttpMessageHandler(
-            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"status\":\"ok\",\"service\":\"edocat-bridge\",\"version\":\"0.2.0\"}"),
+            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"status\":\"ok\",\"service\":\"dms-provider-bridge\",\"version\":\"0.2.0\"}"),
             HttpResponseMessageForJson(HttpStatusCode.OK, jsonFilePayload));
 
         using var httpClient = new HttpClient(handler)
@@ -63,7 +63,7 @@ public sealed class WfxBridgeClientTests
         rawResponse.Headers.Add("X-Bridge-Raw-Content", "1");
 
         var handler = new QueueHttpMessageHandler(
-            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"status\":\"ok\",\"service\":\"edocat-bridge\",\"version\":\"0.2.0\"}"),
+            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"status\":\"ok\",\"service\":\"dms-provider-bridge\",\"version\":\"0.2.0\"}"),
             rawResponse);
 
         using var httpClient = new HttpClient(handler)
@@ -91,7 +91,7 @@ public sealed class WfxBridgeClientTests
         errorResponse.Headers.Add("X-Bridge-Raw-Content", "0");
 
         var handler = new QueueHttpMessageHandler(
-            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"status\":\"ok\",\"service\":\"edocat-bridge\",\"version\":\"0.2.0\"}"),
+            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"status\":\"ok\",\"service\":\"dms-provider-bridge\",\"version\":\"0.2.0\"}"),
             errorResponse);
 
         using var httpClient = new HttpClient(handler)

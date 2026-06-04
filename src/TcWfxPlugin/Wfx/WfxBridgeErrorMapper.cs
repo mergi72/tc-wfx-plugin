@@ -6,7 +6,7 @@ internal static class WfxBridgeErrorMapper
     {
         return bridgeErrorCode switch
         {
-            // Bridge WfxErrorCode values from edocat-bridge.adapters.commander_api.WfxErrorCode
+            // Bridge WfxErrorCode values from dms_provider_bridge.adapters.commander_api.WfxErrorCode
             0 => WfxResultCodes.Success,
             1 => WfxResultCodes.NotSupported,
             2 => WfxResultCodes.FileNotFound,
