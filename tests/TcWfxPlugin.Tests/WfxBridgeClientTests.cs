@@ -143,6 +143,47 @@ public sealed class WfxBridgeClientTests
         }
     }
 
+    [Fact]
+    public async Task UploadRawAsync_ReportsStreamingProgress()
+    {
+        var handler = new UploadReadingQueueHttpMessageHandler(
+            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"status\":\"ok\",\"service\":\"dms-provider-bridge\",\"version\":\"0.2.0\"}"),
+            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"ok\":true,\"error_code\":0,\"message\":\"\",\"data\":null}"));
+
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://127.0.0.1:8765/"),
+        };
+
+        var client = new WfxBridgeClient(httpClient);
+        var tempFile = Path.GetTempFileName();
+        var payload = new byte[(1024 * 1024 * 2) + 123];
+        new Random(42).NextBytes(payload);
+        await File.WriteAllBytesAsync(tempFile, payload);
+        var progressEvents = new List<long>();
+        var progress = new CallbackProgress<long>(value => progressEvents.Add(value));
+
+        try
+        {
+            var result = await client.UploadRawAsync(
+                "alfresco:/contracts",
+                "upload.bin",
+                new BridgeAuthContext { Mode = "credentials", CredentialId = "tc-wfx/bridge" },
+                tempFile,
+                overwrite: false,
+                progress: progress);
+
+            Assert.True(result.Ok);
+            Assert.NotEmpty(progressEvents);
+            Assert.Equal(payload.LongLength, progressEvents[^1]);
+            Assert.Contains(progressEvents, value => value > 0 && value < payload.LongLength);
+        }
+        finally
+        {
+            File.Delete(tempFile);
+        }
+    }
+
     private static HttpResponseMessage HttpResponseMessageForJson(HttpStatusCode statusCode, string json)
     {
         return new HttpResponseMessage(statusCode)
@@ -207,6 +248,53 @@ public sealed class WfxBridgeClientTests
             }
 
             return response;
+        }
+    }
+
+    private sealed class UploadReadingQueueHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Queue<HttpResponseMessage> _responses;
+
+        public UploadReadingQueueHttpMessageHandler(params HttpResponseMessage[] responses)
+        {
+            _responses = new Queue<HttpResponseMessage>(responses);
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (_responses.Count == 0)
+            {
+                throw new InvalidOperationException($"No queued response for request {request.Method} {request.RequestUri}.");
+            }
+
+            if (request.RequestUri?.AbsolutePath.EndsWith("/bridge/wfx/upload-raw", StringComparison.Ordinal) == true && request.Content is not null)
+            {
+                _ = await request.Content.ReadAsByteArrayAsync(cancellationToken);
+            }
+
+            var response = _responses.Dequeue();
+            response.RequestMessage = request;
+            if (response.Content is not null && response.Content.Headers.ContentType is null)
+            {
+                response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            }
+
+            return response;
+        }
+    }
+
+    private sealed class CallbackProgress<T> : IProgress<T>
+    {
+        private readonly Action<T> _callback;
+
+        public CallbackProgress(Action<T> callback)
+        {
+            _callback = callback;
+        }
+
+        public void Report(T value)
+        {
+            _callback(value);
         }
     }
 }

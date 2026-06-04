@@ -322,6 +322,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         BridgeAuthContext auth,
         string sourcePath,
         bool overwrite,
+        IProgress<long>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var compatibilityError = await EnsureBridgeCompatibilityAsync(cancellationToken);
@@ -337,6 +338,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             FileShare.Read,
             UploadBufferSizeBytes,
             useAsync: true);
+        Stream uploadStream = progress is null ? stream : new ProgressReadStream(stream, progress);
 
         using var form = new MultipartFormDataContent();
         form.Add(new StringContent(destination), "destination");
@@ -344,7 +346,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         form.Add(new StringContent(overwrite ? "true" : "false"), "overwrite");
         form.Add(new StringContent(JsonSerializer.Serialize(auth, SerializerContext.BridgeAuthContext)), "auth_json");
 
-        using var fileContent = new StreamContent(stream, UploadBufferSizeBytes);
+        using var fileContent = new StreamContent(uploadStream, UploadBufferSizeBytes);
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
         form.Add(fileContent, "file", fileName);
 
@@ -353,6 +355,91 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
 
         using var response = await _httpClient.PostAsync("bridge/wfx/upload-raw", form, timeoutCts.Token);
         return await ParseResponseAsync(response, SerializerContext.WfxResponseJsonElement, timeoutCts.Token);
+    }
+
+    private sealed class ProgressReadStream : Stream
+    {
+        private readonly Stream _inner;
+        private readonly IProgress<long> _progress;
+        private long _bytesRead;
+
+        public ProgressReadStream(Stream inner, IProgress<long> progress)
+        {
+            _inner = inner;
+            _progress = progress;
+        }
+
+        public override bool CanRead => _inner.CanRead;
+        public override bool CanSeek => _inner.CanSeek;
+        public override bool CanWrite => false;
+        public override long Length => _inner.Length;
+
+        public override long Position
+        {
+            get => _inner.Position;
+            set => _inner.Position = value;
+        }
+
+        public override void Flush() => _inner.Flush();
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var read = _inner.Read(buffer, offset, count);
+            ReportProgress(read);
+            return read;
+        }
+
+        public override int Read(Span<byte> buffer)
+        {
+            var read = _inner.Read(buffer);
+            ReportProgress(read);
+            return read;
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var read = await _inner.ReadAsync(buffer, cancellationToken);
+            ReportProgress(read);
+            return read;
+        }
+
+        public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            var read = await _inner.ReadAsync(buffer.AsMemory(offset, count), cancellationToken);
+            ReportProgress(read);
+            return read;
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => _inner.Seek(offset, origin);
+        public override void SetLength(long value) => _inner.SetLength(value);
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Write(ReadOnlySpan<byte> buffer) => throw new NotSupportedException();
+
+        public override ValueTask DisposeAsync()
+        {
+            return _inner.DisposeAsync();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _inner.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
+
+        private void ReportProgress(int bytesRead)
+        {
+            if (bytesRead <= 0)
+            {
+                return;
+            }
+
+            var totalBytesRead = Interlocked.Add(ref _bytesRead, bytesRead);
+            _progress.Report(totalBytesRead);
+        }
     }
 
     private async Task<WfxResponse<TData>> PostAsync<TRequest, TData>(

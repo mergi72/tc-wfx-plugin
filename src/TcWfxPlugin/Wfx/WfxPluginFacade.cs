@@ -183,6 +183,7 @@ public sealed class WfxPluginFacade
         BridgeAuthContext auth,
         string sourcePath,
         bool overwrite,
+        IProgress<long>? progress = null,
         CancellationToken cancellationToken = default)
     {
         if (!ProviderPath.TryParse(destination, out _))
@@ -200,6 +201,6 @@ public sealed class WfxPluginFacade
             return Task.FromResult(WfxResponse<JsonElement>.Failed("Source path is required for upload."));
         }
 
-        return _bridgeClient.UploadRawAsync(destination, fileName, auth, sourcePath, overwrite, cancellationToken);
+        return _bridgeClient.UploadRawAsync(destination, fileName, auth, sourcePath, overwrite, progress, cancellationToken);
     }
 }

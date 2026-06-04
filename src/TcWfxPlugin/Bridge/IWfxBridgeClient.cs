@@ -15,5 +15,5 @@ public interface IWfxBridgeClient
     Task<WfxResponse<JsonElement>> DownloadAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default);
     Task<WfxResponse<JsonElement>> UploadAsync(string destination, string fileName, BridgeAuthContext auth, string? contentBase64, bool overwrite, CancellationToken cancellationToken = default);
     Task<WfxResponse<JsonElement>> UploadFromSourceAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, CancellationToken cancellationToken = default);
-    Task<WfxResponse<JsonElement>> UploadRawAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, CancellationToken cancellationToken = default);
+    Task<WfxResponse<JsonElement>> UploadRawAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, IProgress<long>? progress = null, CancellationToken cancellationToken = default);
 }

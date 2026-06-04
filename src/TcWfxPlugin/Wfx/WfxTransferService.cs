@@ -16,57 +16,105 @@ internal sealed class WfxTransferService
         _authProvider = authProvider;
     }
 
-    public async Task<int> MkDirAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
+    public async Task<int> MkDirAsync(
+        string totalCommanderPath,
+        IProgress<WfxTransferProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
+        using var operation = WfxOperationProgressReporter.CreateUnit(
+            progress,
+            operation: "mkdir",
+            sourcePath: totalCommanderPath,
+            destinationPath: totalCommanderPath);
+
         if (!TotalCommanderPathMapper.TryToProviderPath(totalCommanderPath, out var providerPath))
         {
+            operation.Finish(false);
             return WfxResultCodes.FileNotFound;
         }
 
         var response = await _facade.CreateDirectoryAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
+        operation.Finish(response.Ok);
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
 
-    public async Task<int> DeleteAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
+    public async Task<int> DeleteAsync(
+        string totalCommanderPath,
+        IProgress<WfxTransferProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
+        using var operation = WfxOperationProgressReporter.CreateUnit(
+            progress,
+            operation: "delete",
+            sourcePath: totalCommanderPath,
+            destinationPath: totalCommanderPath);
+
         if (!TotalCommanderPathMapper.TryToProviderPath(totalCommanderPath, out var providerPath))
         {
+            operation.Finish(false);
             return WfxResultCodes.FileNotFound;
         }
 
         var response = await _facade.DeleteAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
+        operation.Finish(response.Ok);
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
 
-    public async Task<int> RenameAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, CancellationToken cancellationToken = default)
+    public async Task<int> RenameAsync(
+        string totalCommanderSourcePath,
+        string totalCommanderDestinationPath,
+        IProgress<WfxTransferProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
+        using var operation = WfxOperationProgressReporter.CreateUnit(
+            progress,
+            operation: "move",
+            sourcePath: totalCommanderSourcePath,
+            destinationPath: totalCommanderDestinationPath);
+
         if (!TotalCommanderPathMapper.TryToProviderPath(totalCommanderSourcePath, out var sourceProviderPath))
         {
+            operation.Finish(false);
             return WfxResultCodes.FileNotFound;
         }
 
         if (!TotalCommanderPathMapper.TryToProviderPath(totalCommanderDestinationPath, out var destinationProviderPath))
         {
+            operation.Finish(false);
             return WfxResultCodes.FileNotFound;
         }
 
         var response = await _facade.RenameAsync(sourceProviderPath, destinationProviderPath, _authProvider.GetAuthContext(), cancellationToken);
+        operation.Finish(response.Ok);
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
 
-    public async Task<int> CopyAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, CancellationToken cancellationToken = default)
+    public async Task<int> CopyAsync(
+        string totalCommanderSourcePath,
+        string totalCommanderDestinationPath,
+        IProgress<WfxTransferProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
+        using var operation = WfxOperationProgressReporter.CreateUnit(
+            progress,
+            operation: "copy",
+            sourcePath: totalCommanderSourcePath,
+            destinationPath: totalCommanderDestinationPath);
+
         if (!TotalCommanderPathMapper.TryToProviderPath(totalCommanderSourcePath, out var sourceProviderPath))
         {
+            operation.Finish(false);
             return WfxResultCodes.FileNotFound;
         }
 
         if (!TotalCommanderPathMapper.TryToProviderPath(totalCommanderDestinationPath, out var destinationProviderPath))
         {
+            operation.Finish(false);
             return WfxResultCodes.FileNotFound;
         }
 
         var response = await _facade.CopyAsync(sourceProviderPath, destinationProviderPath, _authProvider.GetAuthContext(), cancellationToken);
+        operation.Finish(response.Ok);
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
 
@@ -80,6 +128,13 @@ internal sealed class WfxTransferService
         {
             return WfxResultCodes.FileNotFound;
         }
+
+        using var operation = WfxOperationProgressReporter.Create(
+            progress,
+            operation: "download",
+            sourcePath: totalCommanderSourcePath,
+            destinationPath: localTargetPath,
+            totalBytes: null);
 
         var rawDownload = await _facade.DownloadRawAsync(sourceProviderPath, _authProvider.GetAuthContext(), cancellationToken);
         if (rawDownload is not null)
@@ -99,15 +154,8 @@ internal sealed class WfxTransferService
 
                 var totalBytes = rawDownload.Session.ContentLength;
                 var rawBytesTransferred = 0L;
-                progress?.Report(new WfxTransferProgress
-                {
-                    Operation = "download",
-                    SourcePath = totalCommanderSourcePath,
-                    DestinationPath = localTargetPath,
-                    BytesTransferred = 0,
-                    TotalBytes = totalBytes,
-                    IsCompleted = false,
-                });
+                operation.SetTotalBytes(totalBytes);
+                operation.Report(0);
 
                 var buffer = new byte[IoChunkSize];
                 await using (var output = new FileStream(localTargetPath, FileMode.Create, FileAccess.Write, FileShare.None, IoChunkSize, useAsync: true))
@@ -125,27 +173,11 @@ internal sealed class WfxTransferService
                         await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                         rawBytesTransferred += read;
 
-                        progress?.Report(new WfxTransferProgress
-                        {
-                            Operation = "download",
-                            SourcePath = totalCommanderSourcePath,
-                            DestinationPath = localTargetPath,
-                            BytesTransferred = rawBytesTransferred,
-                            TotalBytes = totalBytes,
-                            IsCompleted = totalBytes is long knownTotal ? rawBytesTransferred >= knownTotal : false,
-                        });
+                        operation.Report(rawBytesTransferred);
                     }
                 }
 
-                progress?.Report(new WfxTransferProgress
-                {
-                    Operation = "download",
-                    SourcePath = totalCommanderSourcePath,
-                    DestinationPath = localTargetPath,
-                    BytesTransferred = rawBytesTransferred,
-                    TotalBytes = totalBytes ?? rawBytesTransferred,
-                    IsCompleted = true,
-                });
+                operation.Finish(true, totalBytes ?? rawBytesTransferred);
 
                 return WfxResultCodes.Success;
             }
@@ -179,15 +211,8 @@ internal sealed class WfxTransferService
         }
 
         var bytesTransferred = 0L;
-        progress?.Report(new WfxTransferProgress
-        {
-            Operation = "download",
-            SourcePath = totalCommanderSourcePath,
-            DestinationPath = localTargetPath,
-            BytesTransferred = bytesTransferred,
-            TotalBytes = rawContent.LongLength,
-            IsCompleted = false,
-        });
+        operation.SetTotalBytes(rawContent.LongLength);
+        operation.Report(bytesTransferred);
 
         await using (var output = new FileStream(localTargetPath, FileMode.Create, FileAccess.Write, FileShare.None, IoChunkSize, useAsync: true))
         {
@@ -201,17 +226,11 @@ internal sealed class WfxTransferService
                 offset += count;
                 bytesTransferred += count;
 
-                progress?.Report(new WfxTransferProgress
-                {
-                    Operation = "download",
-                    SourcePath = totalCommanderSourcePath,
-                    DestinationPath = localTargetPath,
-                    BytesTransferred = bytesTransferred,
-                    TotalBytes = rawContent.LongLength,
-                    IsCompleted = bytesTransferred >= rawContent.LongLength,
-                });
+                operation.Report(bytesTransferred);
             }
         }
+
+        operation.Finish(true, bytesTransferred);
 
         return WfxResultCodes.Success;
     }
@@ -261,15 +280,25 @@ internal sealed class WfxTransferService
         }
 
         var totalBytes = new FileInfo(localSourcePath).Length;
-        progress?.Report(new WfxTransferProgress
+        long reportedUploadBytes = 0;
+        using var operation = WfxOperationProgressReporter.Create(
+            progress,
+            operation: "upload",
+            sourcePath: localSourcePath,
+            destinationPath: totalCommanderDestinationPath,
+            totalBytes: totalBytes);
+        operation.Report(0);
+
+        IProgress<long>? uploadProgress = null;
+        if (progress is not null)
         {
-            Operation = "upload",
-            SourcePath = localSourcePath,
-            DestinationPath = totalCommanderDestinationPath,
-            BytesTransferred = 0,
-            TotalBytes = totalBytes,
-            IsCompleted = false,
-        });
+            uploadProgress = new UploadByteProgress(bytesTransferred =>
+            {
+                var normalizedBytes = Math.Clamp(bytesTransferred, 0, totalBytes);
+                Interlocked.Exchange(ref reportedUploadBytes, normalizedBytes);
+                operation.Report(normalizedBytes);
+            });
+        }
 
         var response = await _facade.UploadRawAsync(
             uploadDestinationProviderPath,
@@ -277,17 +306,14 @@ internal sealed class WfxTransferService
             auth,
             localSourcePath,
             overwrite,
+            uploadProgress,
             cancellationToken);
 
-        progress?.Report(new WfxTransferProgress
-        {
-            Operation = "upload",
-            SourcePath = localSourcePath,
-            DestinationPath = totalCommanderDestinationPath,
-            BytesTransferred = totalBytes,
-            TotalBytes = totalBytes,
-            IsCompleted = response.Ok,
-        });
+        var finalBytesTransferred = response.Ok
+            ? totalBytes
+            : Interlocked.Read(ref reportedUploadBytes);
+
+        operation.Finish(response.Ok, finalBytesTransferred);
 
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
@@ -393,5 +419,136 @@ internal sealed class WfxTransferService
 
         contentBase64 = value;
         return true;
+    }
+
+    private sealed class WfxOperationProgressReporter : IDisposable
+    {
+        private readonly IProgress<WfxTransferProgress>? _progress;
+        private readonly string _operation;
+        private readonly string _sourcePath;
+        private readonly string _destinationPath;
+        private long? _totalBytes;
+        private long _lastBytes;
+        private bool _completed;
+
+        private WfxOperationProgressReporter(
+            IProgress<WfxTransferProgress>? progress,
+            string operation,
+            string sourcePath,
+            string destinationPath,
+            long? totalBytes)
+        {
+            _progress = progress;
+            _operation = operation;
+            _sourcePath = sourcePath;
+            _destinationPath = destinationPath;
+            _totalBytes = totalBytes;
+        }
+
+        public static WfxOperationProgressReporter Create(
+            IProgress<WfxTransferProgress>? progress,
+            string operation,
+            string sourcePath,
+            string destinationPath,
+            long? totalBytes)
+        {
+            return new WfxOperationProgressReporter(progress, operation, sourcePath, destinationPath, totalBytes);
+        }
+
+        public static WfxOperationProgressReporter CreateUnit(
+            IProgress<WfxTransferProgress>? progress,
+            string operation,
+            string sourcePath,
+            string destinationPath)
+        {
+            var reporter = new WfxOperationProgressReporter(progress, operation, sourcePath, destinationPath, totalBytes: 1);
+            reporter.Report(0);
+            return reporter;
+        }
+
+        public void SetTotalBytes(long? totalBytes)
+        {
+            _totalBytes = totalBytes;
+        }
+
+        public void Report(long bytesTransferred)
+        {
+            if (_completed)
+            {
+                return;
+            }
+
+            var normalizedBytes = bytesTransferred < 0 ? 0 : bytesTransferred;
+            if (_totalBytes is long total)
+            {
+                normalizedBytes = Math.Min(normalizedBytes, total);
+            }
+
+            _lastBytes = normalizedBytes;
+            Emit(isCompleted: false);
+        }
+
+        public void Finish(bool success, long? bytesTransferred = null)
+        {
+            if (_completed)
+            {
+                return;
+            }
+
+            _completed = true;
+
+            if (bytesTransferred is long providedBytes)
+            {
+                _lastBytes = providedBytes;
+            }
+
+            if (success && _totalBytes is long total)
+            {
+                _lastBytes = total;
+            }
+
+            if (_lastBytes < 0)
+            {
+                _lastBytes = 0;
+            }
+
+            Emit(isCompleted: success);
+        }
+
+        public void Dispose()
+        {
+            if (!_completed)
+            {
+                Finish(success: false);
+            }
+        }
+
+        private void Emit(bool isCompleted)
+        {
+            _progress?.Report(new WfxTransferProgress
+            {
+                Operation = _operation,
+                SourcePath = _sourcePath,
+                DestinationPath = _destinationPath,
+                BytesTransferred = _lastBytes,
+                TotalBytes = _totalBytes,
+                IsCompleted = isCompleted,
+            });
+        }
+    }
+
+    private sealed class UploadByteProgress : IProgress<long>
+    {
+        private readonly Action<long> _onReport;
+
+        public UploadByteProgress(Action<long> onReport)
+        {
+            _onReport = onReport;
+        }
+
+        public void Report(long value)
+        {
+            _onReport(value);
+        }
     }
 }

@@ -62,7 +62,7 @@ public sealed class WfxPluginRuntime
     public async Task<int> MkDirAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
     {
         return await RunTransferAsync(
-            (_, ct) => _transferService.MkDirAsync(totalCommanderPath, ct),
+            (progress, ct) => _transferService.MkDirAsync(totalCommanderPath, progress, ct),
             cancellationToken,
             retryOnAccessDenied: false,
             invalidateRootProvidersCacheOnSuccess: true);
@@ -71,7 +71,7 @@ public sealed class WfxPluginRuntime
     public async Task<int> DeleteAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
     {
         return await RunTransferAsync(
-            (_, ct) => _transferService.DeleteAsync(totalCommanderPath, ct),
+            (progress, ct) => _transferService.DeleteAsync(totalCommanderPath, progress, ct),
             cancellationToken,
             invalidateRootProvidersCacheOnSuccess: true);
     }
@@ -79,7 +79,7 @@ public sealed class WfxPluginRuntime
     public async Task<int> RenameAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, CancellationToken cancellationToken = default)
     {
         return await RunTransferAsync(
-            (_, ct) => _transferService.RenameAsync(totalCommanderSourcePath, totalCommanderDestinationPath, ct),
+            (progress, ct) => _transferService.RenameAsync(totalCommanderSourcePath, totalCommanderDestinationPath, progress, ct),
             cancellationToken,
             invalidateRootProvidersCacheOnSuccess: true);
     }
@@ -87,7 +87,7 @@ public sealed class WfxPluginRuntime
     public async Task<int> CopyAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, CancellationToken cancellationToken = default)
     {
         return await RunTransferAsync(
-            (_, ct) => _transferService.CopyAsync(totalCommanderSourcePath, totalCommanderDestinationPath, ct),
+            (progress, ct) => _transferService.CopyAsync(totalCommanderSourcePath, totalCommanderDestinationPath, progress, ct),
             cancellationToken,
             invalidateRootProvidersCacheOnSuccess: true);
     }

@@ -564,6 +564,70 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
+    public async Task Runtime_PutFileAsync_ReportsTransferProgress()
+    {
+        var client = new FakeBridgeClient
+        {
+            UploadResponse = JsonResponse(true, "{}"),
+            UploadProgressOffsets = [2, 5],
+        };
+
+        var runtime = CreateRuntime(client);
+        var progressEvents = new List<WfxTransferProgress>();
+        runtime.TransferProgressChanged += progress => progressEvents.Add(progress);
+        var source = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(source, "hello");
+
+        try
+        {
+            var result = await runtime.PutFileAsync(source, "\\edocat\\incoming", overwrite: true);
+            var timeoutAt = DateTime.UtcNow.AddSeconds(1);
+            while (progressEvents.Count < 3 && DateTime.UtcNow < timeoutAt)
+            {
+                await Task.Delay(10);
+            }
+
+            Assert.Equal(WfxResultCodes.Success, result);
+            Assert.NotEmpty(progressEvents);
+            Assert.Contains(progressEvents, evt => evt.Operation == "upload" && evt.BytesTransferred == 0 && evt.IsCompleted == false);
+            Assert.Contains(progressEvents, evt => evt.Operation == "upload" && evt.BytesTransferred == 2 && evt.IsCompleted == false);
+            Assert.Contains(progressEvents, evt => evt.Operation == "upload" && evt.BytesTransferred == 5 && evt.IsCompleted == true);
+        }
+        finally
+        {
+            if (File.Exists(source))
+            {
+                File.Delete(source);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Runtime_Move_ReportsTransferProgress_AsMoveOperation()
+    {
+        var client = new FakeBridgeClient
+        {
+            RenameResponse = JsonResponse(true, "{}"),
+        };
+
+        var runtime = CreateRuntime(client);
+        var progressEvents = new List<WfxTransferProgress>();
+        runtime.TransferProgressChanged += progress => progressEvents.Add(progress);
+
+        var result = await runtime.RenameAsync("\\edocat\\source.txt", "\\edocat\\target.txt");
+        var timeoutAt = DateTime.UtcNow.AddSeconds(1);
+        while (progressEvents.Count < 2 && DateTime.UtcNow < timeoutAt)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Contains(progressEvents, evt => evt.Operation == "move" && evt.BytesTransferred == 0 && evt.IsCompleted == false);
+        Assert.Contains(progressEvents, evt => evt.Operation == "move" && evt.IsCompleted == true);
+        Assert.DoesNotContain(progressEvents, evt => evt.Operation == "rename");
+    }
+
+    [Fact]
     public async Task Runtime_FindFirst_AccessDenied_RetriesAfterAuthReset()
     {
         var client = new FakeBridgeClient
@@ -751,6 +815,7 @@ public sealed class WfxServicesTests
         public string? LastUploadContentBase64 { get; private set; }
         public string? LastUploadSourcePath { get; private set; }
         public bool LastUploadOverwrite { get; private set; }
+        public IReadOnlyList<long>? UploadProgressOffsets { get; set; }
         public bool BlockDownloadUntilCanceled { get; set; }
         private readonly TaskCompletionSource<bool> _downloadStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -823,13 +888,21 @@ public sealed class WfxServicesTests
             return Task.FromResult(UploadResponse);
         }
 
-        public Task<WfxResponse<JsonElement>> UploadRawAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> UploadRawAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
         {
             LastUploadDestination = destination;
             LastUploadFileName = fileName;
             LastUploadContentBase64 = null;
             LastUploadSourcePath = sourcePath;
             LastUploadOverwrite = overwrite;
+            if (progress is not null && UploadProgressOffsets is not null)
+            {
+                foreach (var bytesTransferred in UploadProgressOffsets)
+                {
+                    progress.Report(bytesTransferred);
+                }
+            }
+
             return Task.FromResult(UploadResponse);
         }
     }
