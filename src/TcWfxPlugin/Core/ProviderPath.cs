@@ -19,7 +19,7 @@ public readonly record struct ProviderPath(string Provider, string Path)
             return false;
         }
 
-        var provider = value[..separatorIndex].Trim();
+        var provider = value[..separatorIndex].Trim().ToLowerInvariant();
         var path = value[(separatorIndex + 1)..].Trim();
 
         if (provider.Length == 0 || path.Length == 0 || !path.StartsWith('/'))
