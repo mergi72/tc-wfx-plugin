@@ -53,7 +53,7 @@ try {
     $serverProcess = Start-Process -FilePath $PythonExe -ArgumentList @(
         "-m",
         "uvicorn",
-        "edocat_bridge.app.server:app",
+        "dms_provider_bridge.app.server:app",
         "--app-dir",
         $appDir,
         "--host",
