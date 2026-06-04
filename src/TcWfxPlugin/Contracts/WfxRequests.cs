@@ -19,6 +19,7 @@ public sealed class WfxUploadRequest
     public required BridgeAuthContext Auth { get; init; }
     public required string FileName { get; init; }
     public string? ContentBase64 { get; init; }
+    public string? SourcePath { get; init; }
     public bool Overwrite { get; init; }
 }
 

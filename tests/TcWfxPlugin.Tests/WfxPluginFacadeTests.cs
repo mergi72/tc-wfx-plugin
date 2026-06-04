@@ -92,5 +92,11 @@ public sealed class WfxPluginFacadeTests
 
         public Task<WfxResponse<JsonElement>> UploadAsync(string destination, string fileName, BridgeAuthContext auth, string? contentBase64, bool overwrite, CancellationToken cancellationToken = default)
             => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+
+        public Task<WfxResponse<JsonElement>> UploadFromSourceAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, CancellationToken cancellationToken = default)
+            => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+
+        public Task<WfxResponse<JsonElement>> UploadRawAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, CancellationToken cancellationToken = default)
+            => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
     }
 }

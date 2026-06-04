@@ -9,7 +9,9 @@ namespace TcWfxPlugin;
 public sealed class WfxBridgeClient : IWfxBridgeClient
 {
     private static readonly BridgeJsonSerializerContext SerializerContext = BridgeJsonSerializerContext.Default;
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan UploadTimeout = TimeSpan.FromMinutes(30);
+    private const int UploadBufferSizeBytes = 1024 * 1024;
     private const int RawDownloadUnexpectedJsonErrorCode = 500;
     private const string RawContentHeaderName = "X-Bridge-Raw-Content";
     private const string MinimumBridgeVersionEnvVar = "TC_WFX_MIN_BRIDGE_VERSION";
@@ -284,6 +286,68 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             SerializerContext.WfxUploadRequest,
             SerializerContext.WfxResponseJsonElement,
             cancellationToken);
+    }
+
+    public Task<WfxResponse<JsonElement>> UploadFromSourceAsync(
+        string destination,
+        string fileName,
+        BridgeAuthContext auth,
+        string sourcePath,
+        bool overwrite,
+        CancellationToken cancellationToken = default)
+    {
+        return PostAsync(
+            "bridge/wfx/upload",
+            new WfxUploadRequest
+            {
+                Destination = destination,
+                FileName = fileName,
+                Auth = auth,
+                SourcePath = sourcePath,
+                Overwrite = overwrite,
+            },
+            SerializerContext.WfxUploadRequest,
+            SerializerContext.WfxResponseJsonElement,
+            cancellationToken);
+    }
+
+    public async Task<WfxResponse<JsonElement>> UploadRawAsync(
+        string destination,
+        string fileName,
+        BridgeAuthContext auth,
+        string sourcePath,
+        bool overwrite,
+        CancellationToken cancellationToken = default)
+    {
+        var compatibilityError = await EnsureBridgeCompatibilityAsync(cancellationToken);
+        if (compatibilityError is not null)
+        {
+            return WfxResponse<JsonElement>.Failed(compatibilityError, 426);
+        }
+
+        await using var stream = new FileStream(
+            sourcePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            UploadBufferSizeBytes,
+            useAsync: true);
+
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(destination), "destination");
+        form.Add(new StringContent(fileName), "file_name");
+        form.Add(new StringContent(overwrite ? "true" : "false"), "overwrite");
+        form.Add(new StringContent(JsonSerializer.Serialize(auth, SerializerContext.BridgeAuthContext)), "auth_json");
+
+        using var fileContent = new StreamContent(stream, UploadBufferSizeBytes);
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        form.Add(fileContent, "file", fileName);
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(UploadTimeout);
+
+        using var response = await _httpClient.PostAsync("bridge/wfx/upload-raw", form, timeoutCts.Token);
+        return await ParseResponseAsync(response, SerializerContext.WfxResponseJsonElement, timeoutCts.Token);
     }
 
     private async Task<WfxResponse<TData>> PostAsync<TRequest, TData>(

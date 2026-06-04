@@ -260,60 +260,34 @@ internal sealed class WfxTransferService
             }
         }
 
-        byte[] content;
-        await using (var source = new FileStream(localSourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, IoChunkSize, useAsync: true))
+        var totalBytes = new FileInfo(localSourcePath).Length;
+        progress?.Report(new WfxTransferProgress
         {
-            var totalBytes = source.Length;
-            var buffer = new byte[IoChunkSize];
-            var transferred = 0L;
+            Operation = "upload",
+            SourcePath = localSourcePath,
+            DestinationPath = totalCommanderDestinationPath,
+            BytesTransferred = 0,
+            TotalBytes = totalBytes,
+            IsCompleted = false,
+        });
 
-            progress?.Report(new WfxTransferProgress
-            {
-                Operation = "upload",
-                SourcePath = localSourcePath,
-                DestinationPath = totalCommanderDestinationPath,
-                BytesTransferred = transferred,
-                TotalBytes = totalBytes,
-                IsCompleted = false,
-            });
-
-            using var memory = new MemoryStream();
-            while (true)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var read = await source.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
-                if (read == 0)
-                {
-                    break;
-                }
-
-                await memory.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                transferred += read;
-
-                progress?.Report(new WfxTransferProgress
-                {
-                    Operation = "upload",
-                    SourcePath = localSourcePath,
-                    DestinationPath = totalCommanderDestinationPath,
-                    BytesTransferred = transferred,
-                    TotalBytes = totalBytes,
-                    IsCompleted = transferred >= totalBytes,
-                });
-            }
-
-            content = memory.ToArray();
-        }
-
-        var contentBase64 = Convert.ToBase64String(content);
-
-        var response = await _facade.UploadAsync(
+        var response = await _facade.UploadRawAsync(
             uploadDestinationProviderPath,
             fileName,
             auth,
-            contentBase64,
+            localSourcePath,
             overwrite,
             cancellationToken);
+
+        progress?.Report(new WfxTransferProgress
+        {
+            Operation = "upload",
+            SourcePath = localSourcePath,
+            DestinationPath = totalCommanderDestinationPath,
+            BytesTransferred = totalBytes,
+            TotalBytes = totalBytes,
+            IsCompleted = response.Ok,
+        });
 
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }

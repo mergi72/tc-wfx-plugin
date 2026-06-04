@@ -415,7 +415,8 @@ public sealed class WfxServicesTests
             Assert.Equal("edocat:/incoming", client.LastUploadDestination);
             Assert.Equal(Path.GetFileName(source), client.LastUploadFileName);
             Assert.True(client.LastUploadOverwrite);
-            Assert.Equal(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("payload")), client.LastUploadContentBase64);
+            Assert.Null(client.LastUploadContentBase64);
+            Assert.Equal(source, client.LastUploadSourcePath);
         }
         finally
         {
@@ -748,6 +749,7 @@ public sealed class WfxServicesTests
         public string? LastUploadDestination { get; private set; }
         public string? LastUploadFileName { get; private set; }
         public string? LastUploadContentBase64 { get; private set; }
+        public string? LastUploadSourcePath { get; private set; }
         public bool LastUploadOverwrite { get; private set; }
         public bool BlockDownloadUntilCanceled { get; set; }
         private readonly TaskCompletionSource<bool> _downloadStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -806,6 +808,27 @@ public sealed class WfxServicesTests
             LastUploadDestination = destination;
             LastUploadFileName = fileName;
             LastUploadContentBase64 = contentBase64;
+            LastUploadSourcePath = null;
+            LastUploadOverwrite = overwrite;
+            return Task.FromResult(UploadResponse);
+        }
+
+        public Task<WfxResponse<JsonElement>> UploadFromSourceAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, CancellationToken cancellationToken = default)
+        {
+            LastUploadDestination = destination;
+            LastUploadFileName = fileName;
+            LastUploadContentBase64 = null;
+            LastUploadSourcePath = sourcePath;
+            LastUploadOverwrite = overwrite;
+            return Task.FromResult(UploadResponse);
+        }
+
+        public Task<WfxResponse<JsonElement>> UploadRawAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, CancellationToken cancellationToken = default)
+        {
+            LastUploadDestination = destination;
+            LastUploadFileName = fileName;
+            LastUploadContentBase64 = null;
+            LastUploadSourcePath = sourcePath;
             LastUploadOverwrite = overwrite;
             return Task.FromResult(UploadResponse);
         }

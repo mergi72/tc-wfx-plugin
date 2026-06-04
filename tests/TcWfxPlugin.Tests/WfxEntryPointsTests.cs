@@ -953,5 +953,19 @@ public sealed class WfxEntryPointsTests
             LastUploadOverwrite = overwrite;
             return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
         }
+
+        public Task<WfxResponse<JsonElement>> UploadFromSourceAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, CancellationToken cancellationToken = default)
+        {
+            UploadCallCount++;
+            LastUploadOverwrite = overwrite;
+            return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+        }
+
+        public Task<WfxResponse<JsonElement>> UploadRawAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, CancellationToken cancellationToken = default)
+        {
+            UploadCallCount++;
+            LastUploadOverwrite = overwrite;
+            return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
+        }
     }
 }

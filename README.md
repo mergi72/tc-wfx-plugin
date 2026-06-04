@@ -7,7 +7,7 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 - CI workflow: `.github/workflows/ci.yml` (restore, build, test on push/PR)
 - Release artifact workflow: `.github/workflows/release-artifact.yml` (manual run or tag `v*`)
 - Release workflow gating: when secret `BRIDGE_REPO_TOKEN` is set, release first runs bridge integration smoke and publishes artifact only if smoke succeeds.
-- Integration smoke workflow job: starts local `dms-provider-bridge`, validates `GET /health`, `GET /bridge/wfx/providers`, and `POST /bridge/wfx/list` using FSO path.
+- Integration smoke workflow job: starts local `dms-provider-bridge`, validates `GET /health`, `GET /bridge/wfx/providers`, `POST /bridge/wfx/list`, and performs streamed large upload smoke via `POST /bridge/wfx/upload-raw` (default 176 MB) using FSO path.
 	- For cross-repo checkout in GitHub Actions, configure secret `BRIDGE_REPO_TOKEN` (read access to `mergi72/dms-provider-bridge`).
 - Branch protection helper: CI publishes final job `protection-gate` that summarizes required job outcomes.
   - Recommended GitHub branch rule for `main`: require status check `protection-gate`.
@@ -83,6 +83,7 @@ Cache can also be invalidated explicitly through `WfxEntryPoints.InvalidateProvi
 - `POST /bridge/wfx/copy`
 - `POST /bridge/wfx/download`
 - `POST /bridge/wfx/upload`
+- `POST /bridge/wfx/upload-raw`
 
 ## Next Implementation Step
 
@@ -114,3 +115,7 @@ dotnet publish src/TcWfxPlugin/TcWfxPlugin.csproj --configuration Release -r win
 ```powershell
 ./scripts/run-bridge-smoke.ps1 -BridgeRepoPath ../dms-provider-bridge
 ```
+
+Optional parameters:
+
+- `-LargeUploadMB 176` enables large streamed upload smoke (set `0` to skip)

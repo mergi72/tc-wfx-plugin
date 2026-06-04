@@ -150,4 +150,56 @@ public sealed class WfxPluginFacade
 
         return _bridgeClient.UploadAsync(destination, fileName, auth, contentBase64, overwrite, cancellationToken);
     }
+
+    public Task<WfxResponse<JsonElement>> UploadFromSourceAsync(
+        string destination,
+        string fileName,
+        BridgeAuthContext auth,
+        string sourcePath,
+        bool overwrite,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ProviderPath.TryParse(destination, out _))
+        {
+            return Task.FromResult(WfxResponse<JsonElement>.Failed($"Invalid provider path '{destination}'. Expected format provider:/path."));
+        }
+
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return Task.FromResult(WfxResponse<JsonElement>.Failed("File name is required for upload."));
+        }
+
+        if (string.IsNullOrWhiteSpace(sourcePath))
+        {
+            return Task.FromResult(WfxResponse<JsonElement>.Failed("Source path is required for upload."));
+        }
+
+        return _bridgeClient.UploadFromSourceAsync(destination, fileName, auth, sourcePath, overwrite, cancellationToken);
+    }
+
+    public Task<WfxResponse<JsonElement>> UploadRawAsync(
+        string destination,
+        string fileName,
+        BridgeAuthContext auth,
+        string sourcePath,
+        bool overwrite,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ProviderPath.TryParse(destination, out _))
+        {
+            return Task.FromResult(WfxResponse<JsonElement>.Failed($"Invalid provider path '{destination}'. Expected format provider:/path."));
+        }
+
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return Task.FromResult(WfxResponse<JsonElement>.Failed("File name is required for upload."));
+        }
+
+        if (string.IsNullOrWhiteSpace(sourcePath))
+        {
+            return Task.FromResult(WfxResponse<JsonElement>.Failed("Source path is required for upload."));
+        }
+
+        return _bridgeClient.UploadRawAsync(destination, fileName, auth, sourcePath, overwrite, cancellationToken);
+    }
 }
