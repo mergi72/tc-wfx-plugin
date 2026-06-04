@@ -6,8 +6,6 @@ namespace TcWfxPlugin.Wfx;
 
 internal sealed class WfxListingService
 {
-    private static readonly string[] DefaultProviders = ["edocat", "alfresco", "fso"];
-
     private readonly WfxPluginFacade _facade;
     private readonly IWfxAuthProvider _authProvider;
     private readonly Func<DateTime> _utcNow;
@@ -270,7 +268,7 @@ internal sealed class WfxListingService
             return staleCached;
         }
 
-        return DefaultProviders;
+        return [];
     }
 
     private static bool IsRootListingPath(string totalCommanderPath)

@@ -35,7 +35,7 @@ public sealed class WfxEntryPointsTests
     [Fact]
     public void FsFindFirst_RootPath_ReturnsProviderFolders()
     {
-        var entryPoints = CreateEntryPoints();
+        var entryPoints = CreateEntryPointsAndClient(new[] { "dynamic-a", "dynamic-b" }).EntryPoints;
 
         var firstResult = entryPoints.FsFindFirst("\\", out var handle, out var firstItem);
 
@@ -43,7 +43,7 @@ public sealed class WfxEntryPointsTests
         Assert.NotEqual(0, handle);
         Assert.NotNull(firstItem);
         Assert.True(firstItem.IsDirectory);
-        Assert.Contains(firstItem.FileName, new[] { "edocat", "alfresco", "fso", "dynamic-a", "dynamic-b" });
+        Assert.Equal("dynamic-a", firstItem.FileName);
     }
 
     [Fact]
@@ -60,6 +60,22 @@ public sealed class WfxEntryPointsTests
         Assert.NotNull(secondItem);
         Assert.Equal("dynamic-a", firstItem.FileName);
         Assert.Equal("dynamic-b", secondItem.FileName);
+    }
+
+    [Fact]
+    public void FsFindFirst_RootPath_WhenBridgeUnavailable_ReturnsNoItems()
+    {
+        var bridgeClient = new FakeBridgeClient(Array.Empty<string>())
+        {
+            FailGetProviders = true,
+        };
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var firstResult = entryPoints.FsFindFirst("\\", out var handle, out var firstItem);
+
+        Assert.Equal(WfxResultCodes.NoMoreFiles, firstResult);
+        Assert.NotEqual(0, handle);
+        Assert.Null(firstItem);
     }
 
     [Fact]
