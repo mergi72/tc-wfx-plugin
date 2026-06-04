@@ -10,11 +10,12 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
 {
     private static readonly BridgeJsonSerializerContext SerializerContext = BridgeJsonSerializerContext.Default;
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan UploadTimeout = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan UploadTimeout = ResolveUploadTimeout();
     private const int UploadBufferSizeBytes = 1024 * 1024;
     private const int RawDownloadUnexpectedJsonErrorCode = 500;
     private const string RawContentHeaderName = "X-Bridge-Raw-Content";
     private const string MinimumBridgeVersionEnvVar = "TC_WFX_MIN_BRIDGE_VERSION";
+    private const string UploadTimeoutSecondsEnvVar = "TC_WFX_UPLOAD_TIMEOUT_SECONDS";
     private const string DefaultMinimumBridgeVersion = "0.2.0";
 
     private readonly HttpClient _httpClient;
@@ -469,6 +470,17 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
     {
         var configured = Environment.GetEnvironmentVariable(MinimumBridgeVersionEnvVar);
         return string.IsNullOrWhiteSpace(configured) ? DefaultMinimumBridgeVersion : configured.Trim();
+    }
+
+    private static TimeSpan ResolveUploadTimeout()
+    {
+        var configured = Environment.GetEnvironmentVariable(UploadTimeoutSecondsEnvVar);
+        if (int.TryParse(configured, out var seconds) && seconds > 0)
+        {
+            return TimeSpan.FromSeconds(seconds);
+        }
+
+        return TimeSpan.FromMinutes(90);
     }
 
     private static async Task<WfxResponse<TData>> ParseResponseAsync<TData>(
