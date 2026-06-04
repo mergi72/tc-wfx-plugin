@@ -19,6 +19,11 @@ public static class WfxNativeExports
 
     private static readonly Lazy<WfxEntryPoints> EntryPoints = new(CreateEntryPoints);
     private static readonly object CallbackSyncRoot = new();
+    private static readonly object DiagnosticLogSyncRoot = new();
+    private const string DiagnosticLogDirectory = "c:\\temp";
+    private const string InitLogPath = "c:\\temp\\wfx-init.log";
+    private const string ProgressLogPath = "c:\\temp\\wfx-progress.log";
+    private const string StatusLogPath = "c:\\temp\\wfx-status.log";
     private static int _pluginNumber;
     private static ProgressProcDelegate? _progressProc;
     private static RequestProcDelegate? _requestProc;
@@ -36,9 +41,32 @@ public static class WfxNativeExports
                 ? null
                 : Marshal.GetDelegateForFunctionPointer<RequestProcDelegate>(requestProc);
         }
+
+        AppendDiagnosticLog(
+            InitLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} FsInitW pluginNr={pluginNr}, progressProc=0x{progressProc.ToInt64():X}, requestProc=0x{requestProc.ToInt64():X}");
+
         _ = logProc;
         EntryPoints.Value.OnReconnect();
         return 0;
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "FsStatusInfoW")]
+    public static void FsStatusInfoW(nint remoteDirPtr, int infoStartEnd, int infoOperation)
+    {
+        var remoteDir = Marshal.PtrToStringUni(remoteDirPtr) ?? string.Empty;
+        AppendDiagnosticLog(
+            StatusLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} FsStatusInfoW startEnd={infoStartEnd} operation={infoOperation} remoteDir={remoteDir}");
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "FsStatusInfo")]
+    public static void FsStatusInfo(nint remoteDirPtr, int infoStartEnd, int infoOperation)
+    {
+        var remoteDir = Marshal.PtrToStringAnsi(remoteDirPtr) ?? string.Empty;
+        AppendDiagnosticLog(
+            StatusLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} FsStatusInfo startEnd={infoStartEnd} operation={infoOperation} remoteDir={remoteDir}");
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsFindFirstW")]
@@ -304,6 +332,9 @@ public static class WfxNativeExports
 
         if (progressProc is null)
         {
+            AppendDiagnosticLog(
+                ProgressLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} {progress.Operation} {progress.BytesTransferred}/{progress.TotalBytes} progressProc=null");
             return;
         }
 
@@ -321,7 +352,16 @@ public static class WfxNativeExports
             sourcePtr = Marshal.StringToHGlobalUni(progress.SourcePath);
             destinationPtr = Marshal.StringToHGlobalUni(progress.DestinationPath);
 
+            AppendDiagnosticLog(
+                ProgressLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} {progress.Operation} {progress.BytesTransferred}/{progress.TotalBytes} percent={percentDone} callback=before");
+
             var callbackResult = progressProc(_pluginNumber, sourcePtr, destinationPtr, percentDone);
+
+            AppendDiagnosticLog(
+                ProgressLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} {progress.Operation} {progress.BytesTransferred}/{progress.TotalBytes} percent={percentDone} callback=result={callbackResult}");
+
             if (callbackResult != 0)
             {
                 EntryPoints.Value.CancelCurrentTransfer();
@@ -559,6 +599,22 @@ public static class WfxNativeExports
         var slashIndex = Math.Max(normalized.LastIndexOf('\\'), normalized.LastIndexOf('/'));
         var currentLeaf = slashIndex >= 0 ? normalized[(slashIndex + 1)..] : normalized;
         return string.Equals(currentLeaf, leafName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void AppendDiagnosticLog(string filePath, string line)
+    {
+        try
+        {
+            lock (DiagnosticLogSyncRoot)
+            {
+                Directory.CreateDirectory(DiagnosticLogDirectory);
+                File.AppendAllText(filePath, line + Environment.NewLine);
+            }
+        }
+        catch
+        {
+            // Diagnostics must not affect plugin behavior.
+        }
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
