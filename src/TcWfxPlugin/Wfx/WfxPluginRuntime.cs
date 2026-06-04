@@ -11,12 +11,16 @@ public sealed class WfxPluginRuntime
 
     public event Action<WfxTransferProgress>? TransferProgressChanged;
 
-    public WfxPluginRuntime(WfxPluginFacade facade, IWfxAuthProvider authProvider, Func<DateTime>? utcNow = null)
+    public WfxPluginRuntime(
+        WfxPluginFacade facade,
+        IWfxAuthProvider authProvider,
+        Func<DateTime>? utcNow = null,
+        IWfxProgressReporterFactory? progressReporterFactory = null)
     {
         _authProvider = authProvider;
         var nowProvider = utcNow ?? (() => DateTime.UtcNow);
         _listingService = new WfxListingService(facade, authProvider, nowProvider);
-        _transferService = new WfxTransferService(facade, authProvider);
+        _transferService = new WfxTransferService(facade, authProvider, progressReporterFactory);
         _contextManager = new WfxContextManager(nowProvider);
     }
 
