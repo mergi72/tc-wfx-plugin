@@ -673,6 +673,7 @@ public static class WfxNativeExports
         private readonly int _pluginNumber;
         private readonly ProgressProcDelegate _progressProc;
         private int _lastPercent = -1;
+        private bool _uploadIntermediateSent;
 
         public DirectTcProgressReporter(
             string operation,
@@ -701,6 +702,19 @@ public static class WfxNativeExports
                 _lastPercent = 0;
             }
 
+            // Ensure upload always exposes at least one in-progress state between 0 and 100.
+            if (_operation == "upload" && !_uploadIntermediateSent && percent >= 100)
+            {
+                const int intermediatePercent = 1;
+                if (_lastPercent < intermediatePercent)
+                {
+                    SendPercent(intermediatePercent, value.BytesTransferred, value.TotalBytes);
+                    _lastPercent = intermediatePercent;
+                }
+
+                _uploadIntermediateSent = true;
+            }
+
             if (percent < _lastPercent)
             {
                 percent = _lastPercent;
@@ -716,6 +730,11 @@ public static class WfxNativeExports
 
             SendPercent(percent, value.BytesTransferred, value.TotalBytes);
             _lastPercent = percent;
+
+            if (_operation == "upload" && percent > 0 && percent < 100)
+            {
+                _uploadIntermediateSent = true;
+            }
         }
 
         private void SendPercent(int percent, long bytesTransferred, long? totalBytes)
