@@ -234,7 +234,7 @@ public sealed class WfxEntryPoints
         return normalized;
     }
 
-    public int FsGetFile(string remoteName, string localName, int copyFlags = 0)
+    public int FsGetFile(string remoteName, string localName, int copyFlags = 0, IProgress<WfxTransferProgress>? progress = null)
     {
         var options = ParseCopyFlags(copyFlags);
 
@@ -263,7 +263,7 @@ public sealed class WfxEntryPoints
             return WfxResultCodes.WriteError;
         }
 
-        var downloadResult = _runtime.GetFileAsync(remoteName, localName).GetAwaiter().GetResult();
+        var downloadResult = _runtime.GetFileAsync(remoteName, localName, progress).GetAwaiter().GetResult();
         if (downloadResult != WfxResultCodes.Success)
         {
             return downloadResult;
@@ -277,10 +277,10 @@ public sealed class WfxEntryPoints
         return WfxResultCodes.Success;
     }
 
-    public int FsPutFile(string localName, string remoteName, int copyFlags)
+    public int FsPutFile(string localName, string remoteName, int copyFlags, IProgress<WfxTransferProgress>? progress = null)
     {
         var options = ParseCopyFlags(copyFlags);
-        var uploadResult = FsPutFile(localName, remoteName, options.Overwrite);
+        var uploadResult = FsPutFile(localName, remoteName, options.Overwrite, progress);
         if (uploadResult != WfxResultCodes.Success)
         {
             return uploadResult;
@@ -294,9 +294,9 @@ public sealed class WfxEntryPoints
         return WfxResultCodes.Success;
     }
 
-    public int FsPutFile(string localName, string remoteName, bool overwrite)
+    public int FsPutFile(string localName, string remoteName, bool overwrite, IProgress<WfxTransferProgress>? progress = null)
     {
-        return _runtime.PutFileAsync(localName, remoteName, overwrite).GetAwaiter().GetResult();
+        return _runtime.PutFileAsync(localName, remoteName, overwrite, progress).GetAwaiter().GetResult();
     }
 
     public void InvalidateProvidersCache()

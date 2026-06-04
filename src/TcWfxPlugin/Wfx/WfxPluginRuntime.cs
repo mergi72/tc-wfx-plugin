@@ -98,16 +98,37 @@ public sealed class WfxPluginRuntime
 
     public async Task<int> GetFileAsync(string totalCommanderSourcePath, string localTargetPath, CancellationToken cancellationToken = default)
     {
+        return await GetFileAsync(totalCommanderSourcePath, localTargetPath, progress: null, cancellationToken);
+    }
+
+    public async Task<int> GetFileAsync(
+        string totalCommanderSourcePath,
+        string localTargetPath,
+        IProgress<WfxTransferProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
         return await RunTransferAsync(
-            (progress, ct) => _transferService.GetFileAsync(totalCommanderSourcePath, localTargetPath, progress, ct),
-            cancellationToken);
+            (transferProgress, ct) => _transferService.GetFileAsync(totalCommanderSourcePath, localTargetPath, transferProgress, ct),
+            cancellationToken,
+            progress);
     }
 
     public async Task<int> PutFileAsync(string localSourcePath, string totalCommanderDestinationPath, bool overwrite, CancellationToken cancellationToken = default)
     {
+        return await PutFileAsync(localSourcePath, totalCommanderDestinationPath, overwrite, progress: null, cancellationToken);
+    }
+
+    public async Task<int> PutFileAsync(
+        string localSourcePath,
+        string totalCommanderDestinationPath,
+        bool overwrite,
+        IProgress<WfxTransferProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
         return await RunTransferAsync(
-            (progress, ct) => _transferService.PutFileAsync(localSourcePath, totalCommanderDestinationPath, overwrite, progress, ct),
+            (transferProgress, ct) => _transferService.PutFileAsync(localSourcePath, totalCommanderDestinationPath, overwrite, transferProgress, ct),
             cancellationToken,
+            progress,
             invalidateRootProvidersCacheOnSuccess: true);
     }
 
@@ -133,6 +154,7 @@ public sealed class WfxPluginRuntime
     private async Task<int> RunTransferAsync(
         Func<IProgress<WfxTransferProgress>, CancellationToken, Task<int>> transfer,
         CancellationToken cancellationToken,
+        IProgress<WfxTransferProgress>? progress = null,
         bool retryOnAccessDenied = true,
         bool invalidateRootProvidersCacheOnSuccess = false)
     {
@@ -147,12 +169,12 @@ public sealed class WfxPluginRuntime
 
         try
         {
-            var progress = new Progress<WfxTransferProgress>(value => TransferProgressChanged?.Invoke(value));
-            var result = await transfer(progress, transferCts.Token);
+            var effectiveProgress = progress ?? new InlineProgress<WfxTransferProgress>(value => TransferProgressChanged?.Invoke(value));
+            var result = await transfer(effectiveProgress, transferCts.Token);
             if (retryOnAccessDenied && result == WfxResultCodes.AccessDenied)
             {
                 _authProvider.ResetCachedAuth();
-                result = await transfer(progress, transferCts.Token);
+                result = await transfer(effectiveProgress, transferCts.Token);
             }
 
             if (invalidateRootProvidersCacheOnSuccess && result == WfxResultCodes.Success)
@@ -177,6 +199,21 @@ public sealed class WfxPluginRuntime
             }
 
             transferCts.Dispose();
+        }
+    }
+
+    private sealed class InlineProgress<T> : IProgress<T>
+    {
+        private readonly Action<T> _handler;
+
+        public InlineProgress(Action<T> handler)
+        {
+            _handler = handler;
+        }
+
+        public void Report(T value)
+        {
+            _handler(value);
         }
     }
 }

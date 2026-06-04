@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+using System.Threading;
 
 namespace TcWfxPlugin.Wfx;
 
@@ -22,8 +23,11 @@ public static class WfxNativeExports
     private static readonly object DiagnosticLogSyncRoot = new();
     private const string DiagnosticLogDirectory = "c:\\temp";
     private const string InitLogPath = "c:\\temp\\wfx-init.log";
+    private const string DefaultParamsLogPath = "c:\\temp\\wfx-default-params.log";
     private const string ProgressLogPath = "c:\\temp\\wfx-progress.log";
     private const string StatusLogPath = "c:\\temp\\wfx-status.log";
+    private const string ProgressSelfTestEnvVar = "TC_WFX_PROGRESS_SELFTEST";
+    private static FsDefaultParamStruct? _defaultParams;
     private static int _pluginNumber;
     private static ProgressProcDelegate? _progressProc;
     private static RequestProcDelegate? _requestProc;
@@ -51,6 +55,25 @@ public static class WfxNativeExports
         return 0;
     }
 
+    [UnmanagedCallersOnly(EntryPoint = "FsSetDefaultParams")]
+    public static void FsSetDefaultParams(nint defaultParamsPtr)
+    {
+        if (defaultParamsPtr == nint.Zero)
+        {
+            return;
+        }
+
+        var defaultParams = Marshal.PtrToStructure<FsDefaultParamStruct>(defaultParamsPtr);
+        lock (CallbackSyncRoot)
+        {
+            _defaultParams = defaultParams;
+        }
+
+        AppendDiagnosticLog(
+            DefaultParamsLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} FsSetDefaultParams size={defaultParams.Size}, interfaceLow={defaultParams.PluginInterfaceVersionLow}, interfaceHi={defaultParams.PluginInterfaceVersionHi}, defaultIniName={defaultParams.DefaultIniName}");
+    }
+
     [UnmanagedCallersOnly(EntryPoint = "FsStatusInfoW")]
     public static void FsStatusInfoW(nint remoteDirPtr, int infoStartEnd, int infoOperation)
     {
@@ -67,6 +90,13 @@ public static class WfxNativeExports
         AppendDiagnosticLog(
             StatusLogPath,
             $"{DateTime.Now:HH:mm:ss.fff} FsStatusInfo startEnd={infoStartEnd} operation={infoOperation} remoteDir={remoteDir}");
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "FsGetBackgroundFlags")]
+    public static int FsGetBackgroundFlags()
+    {
+        // Explicitly report foreground-only behavior to TC.
+        return 0;
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsFindFirstW")]
@@ -184,7 +214,8 @@ public static class WfxNativeExports
             }
         }
 
-        var result = EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags);
+        var directProgress = CreateDirectProgressReporter("download", remoteName, localName);
+        var result = EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags, directProgress);
         return result;
     }
 
@@ -242,7 +273,14 @@ public static class WfxNativeExports
             }
         }
 
-        var result = EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags);
+        var selfTestResult = TryRunProgressSelfTest(localName, remoteName);
+        if (selfTestResult.HasValue)
+        {
+            return selfTestResult.Value;
+        }
+
+        var directProgress = CreateDirectProgressReporter("upload", localName, remoteName);
+        var result = EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags, directProgress);
         return result;
     }
 
@@ -318,67 +356,28 @@ public static class WfxNativeExports
         var client = new WfxBridgeClient(baseUrl);
         var facade = new WfxPluginFacade(client);
         var runtime = new WfxPluginRuntime(facade, authProvider);
-        runtime.TransferProgressChanged += OnTransferProgressChanged;
         return new WfxEntryPoints(runtime);
     }
 
-    private static void OnTransferProgressChanged(WfxTransferProgress progress)
+    private static IProgress<WfxTransferProgress>? CreateDirectProgressReporter(string operation, string sourcePath, string destinationPath)
     {
         ProgressProcDelegate? progressProc;
+        int pluginNumber;
         lock (CallbackSyncRoot)
         {
             progressProc = _progressProc;
+            pluginNumber = _pluginNumber;
         }
 
         if (progressProc is null)
         {
             AppendDiagnosticLog(
                 ProgressLogPath,
-                $"{DateTime.Now:HH:mm:ss.fff} {progress.Operation} {progress.BytesTransferred}/{progress.TotalBytes} progressProc=null");
-            return;
+                $"{DateTime.Now:HH:mm:ss.fff} {operation} progressProc=null source={sourcePath} target={destinationPath}");
+            return null;
         }
 
-        var percentDone = 0;
-        if (progress.TotalBytes is long total && total > 0)
-        {
-            var rawPercent = (progress.BytesTransferred * 100L) / total;
-            percentDone = (int)Math.Clamp(rawPercent, 0, 100);
-        }
-
-        nint sourcePtr = nint.Zero;
-        nint destinationPtr = nint.Zero;
-        try
-        {
-            sourcePtr = Marshal.StringToHGlobalUni(progress.SourcePath);
-            destinationPtr = Marshal.StringToHGlobalUni(progress.DestinationPath);
-
-            AppendDiagnosticLog(
-                ProgressLogPath,
-                $"{DateTime.Now:HH:mm:ss.fff} {progress.Operation} {progress.BytesTransferred}/{progress.TotalBytes} percent={percentDone} callback=before");
-
-            var callbackResult = progressProc(_pluginNumber, sourcePtr, destinationPtr, percentDone);
-
-            AppendDiagnosticLog(
-                ProgressLogPath,
-                $"{DateTime.Now:HH:mm:ss.fff} {progress.Operation} {progress.BytesTransferred}/{progress.TotalBytes} percent={percentDone} callback=result={callbackResult}");
-
-            if (callbackResult != 0)
-            {
-                EntryPoints.Value.CancelCurrentTransfer();
-            }
-        }
-        finally
-        {
-            if (sourcePtr != nint.Zero)
-            {
-                Marshal.FreeHGlobal(sourcePtr);
-            }
-
-            if (destinationPtr != nint.Zero)
-            {
-                Marshal.FreeHGlobal(destinationPtr);
-            }
-        }
+        return new DirectTcProgressReporter(operation, sourcePath, destinationPath, pluginNumber, progressProc);
     }
 
     private static void NotifyTotalCommanderPathChanged(string path)
@@ -397,29 +396,61 @@ public static class WfxNativeExports
             return;
         }
 
-        nint sourcePtr = nint.Zero;
-        nint targetPtr = nint.Zero;
         try
         {
-            sourcePtr = Marshal.StringToHGlobalUni(path);
-            targetPtr = Marshal.StringToHGlobalUni(path);
-            _ = progressProc(pluginNumber, sourcePtr, targetPtr, 100);
+            _ = progressProc(pluginNumber, path, path, 100);
         }
         catch
         {
             // Best-effort refresh hint for TC UI; operation result is already resolved.
         }
-        finally
+    }
+
+    private static int? TryRunProgressSelfTest(string sourcePath, string destinationPath)
+    {
+        var selfTestEnabled = string.Equals(
+            Environment.GetEnvironmentVariable(ProgressSelfTestEnvVar),
+            "1",
+            StringComparison.OrdinalIgnoreCase);
+        if (!selfTestEnabled)
         {
-            if (sourcePtr != nint.Zero)
-            {
-                Marshal.FreeHGlobal(sourcePtr);
-            }
-            if (targetPtr != nint.Zero)
-            {
-                Marshal.FreeHGlobal(targetPtr);
-            }
+            return null;
         }
+
+        ProgressProcDelegate? progressProc;
+        int pluginNumber;
+        lock (CallbackSyncRoot)
+        {
+            progressProc = _progressProc;
+            pluginNumber = _pluginNumber;
+        }
+
+        if (progressProc is null)
+        {
+            return null;
+        }
+
+        // Use hardcoded non-empty names so TC dialog shows something identifiable.
+        const string selfTestSrc = "selftest-src.bin";
+        const string selfTestDst = "selftest-dst.bin";
+
+        var steps = new[] { (0, 1000), (25, 1000), (50, 5000), (75, 1000), (100, 1000) };
+        foreach (var (percent, delayMs) in steps)
+        {
+            var callbackResult = progressProc(pluginNumber, selfTestSrc, selfTestDst, percent);
+            AppendDiagnosticLog(
+                ProgressLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} selftest percent={percent} callback=result={callbackResult}");
+
+            if (callbackResult != 0)
+            {
+                return WfxResultCodes.UserAbort;
+            }
+
+            Thread.Sleep(delayMs);
+        }
+
+        return null;
     }
 
     // Removed TraceCallback method and its usage
@@ -617,8 +648,95 @@ public static class WfxNativeExports
         }
     }
 
-    [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
-    private delegate int ProgressProcDelegate(int pluginNr, nint sourceName, nint targetName, int percentDone);
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    private struct FsDefaultParamStruct
+    {
+        public int Size;
+        public int PluginInterfaceVersionLow;
+        public int PluginInterfaceVersionHi;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string DefaultIniName;
+    }
+
+    private sealed class DirectTcProgressReporter : IProgress<WfxTransferProgress>
+    {
+        private readonly string _operation;
+        private readonly string _sourcePath;
+        private readonly string _destinationPath;
+        private readonly int _pluginNumber;
+        private readonly ProgressProcDelegate _progressProc;
+        private int _lastPercent = -1;
+
+        public DirectTcProgressReporter(
+            string operation,
+            string sourcePath,
+            string destinationPath,
+            int pluginNumber,
+            ProgressProcDelegate progressProc)
+        {
+            _operation = operation;
+            _sourcePath = sourcePath;
+            _destinationPath = destinationPath;
+            _pluginNumber = pluginNumber;
+            _progressProc = progressProc;
+        }
+
+        public void Report(WfxTransferProgress value)
+        {
+            var totalBytes = value.TotalBytes.GetValueOrDefault();
+            var percent = totalBytes > 0
+                ? (int)Math.Clamp((value.BytesTransferred * 100L) / totalBytes, 0, 100)
+                : 0;
+
+            if (_lastPercent < 0)
+            {
+                SendPercent(0, value.BytesTransferred, value.TotalBytes);
+                _lastPercent = 0;
+            }
+
+            if (percent < _lastPercent)
+            {
+                percent = _lastPercent;
+            }
+
+            if (percent == _lastPercent)
+            {
+                AppendDiagnosticLog(
+                    ProgressLogPath,
+                    $"{DateTime.Now:HH:mm:ss.fff} {_operation} {value.BytesTransferred}/{value.TotalBytes} percent={percent} callback=skipped-same-percent");
+                return;
+            }
+
+            SendPercent(percent, value.BytesTransferred, value.TotalBytes);
+            _lastPercent = percent;
+        }
+
+        private void SendPercent(int percent, long bytesTransferred, long? totalBytes)
+        {
+            AppendDiagnosticLog(
+                ProgressLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} {_operation} {bytesTransferred}/{totalBytes} percent={percent} callback=before");
+
+            var callbackResult = _progressProc(_pluginNumber, _sourcePath, _destinationPath, percent);
+
+            AppendDiagnosticLog(
+                ProgressLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} {_operation} {bytesTransferred}/{totalBytes} percent={percent} callback=result={callbackResult}");
+
+            if (callbackResult != 0)
+            {
+                EntryPoints.Value.CancelCurrentTransfer();
+            }
+        }
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Unicode)]
+    private delegate int ProgressProcDelegate(
+        int pluginNr,
+        [MarshalAs(UnmanagedType.LPWStr)] string sourceName,
+        [MarshalAs(UnmanagedType.LPWStr)] string targetName,
+        int percentDone);
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
     private delegate int RequestProcDelegate(int pluginNr, int requestType, nint customTitle, nint customText, nint returnedText, int maxLen);
