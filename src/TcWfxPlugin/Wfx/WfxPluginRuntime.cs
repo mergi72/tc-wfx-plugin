@@ -63,36 +63,40 @@ public sealed class WfxPluginRuntime
         return _contextManager.FindClose(handle);
     }
 
-    public async Task<int> MkDirAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
+    public async Task<int> MkDirAsync(string totalCommanderPath, IProgress<WfxTransferProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         return await RunTransferAsync(
-            (progress, ct) => _transferService.MkDirAsync(totalCommanderPath, progress, ct),
+            (p, ct) => _transferService.MkDirAsync(totalCommanderPath, p, ct),
             cancellationToken,
+            progress,
             retryOnAccessDenied: false,
             invalidateRootProvidersCacheOnSuccess: true);
     }
 
-    public async Task<int> DeleteAsync(string totalCommanderPath, CancellationToken cancellationToken = default)
+    public async Task<int> DeleteAsync(string totalCommanderPath, IProgress<WfxTransferProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         return await RunTransferAsync(
-            (progress, ct) => _transferService.DeleteAsync(totalCommanderPath, progress, ct),
+            (p, ct) => _transferService.DeleteAsync(totalCommanderPath, p, ct),
             cancellationToken,
+            progress,
             invalidateRootProvidersCacheOnSuccess: true);
     }
 
-    public async Task<int> RenameAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, CancellationToken cancellationToken = default)
+    public async Task<int> RenameAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, IProgress<WfxTransferProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         return await RunTransferAsync(
-            (progress, ct) => _transferService.RenameAsync(totalCommanderSourcePath, totalCommanderDestinationPath, progress, ct),
+            (p, ct) => _transferService.RenameAsync(totalCommanderSourcePath, totalCommanderDestinationPath, p, ct),
             cancellationToken,
+            progress,
             invalidateRootProvidersCacheOnSuccess: true);
     }
 
-    public async Task<int> CopyAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, CancellationToken cancellationToken = default)
+    public async Task<int> CopyAsync(string totalCommanderSourcePath, string totalCommanderDestinationPath, IProgress<WfxTransferProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         return await RunTransferAsync(
-            (progress, ct) => _transferService.CopyAsync(totalCommanderSourcePath, totalCommanderDestinationPath, progress, ct),
+            (p, ct) => _transferService.CopyAsync(totalCommanderSourcePath, totalCommanderDestinationPath, p, ct),
             cancellationToken,
+            progress,
             invalidateRootProvidersCacheOnSuccess: true);
     }
 

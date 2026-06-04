@@ -138,7 +138,8 @@ public static class WfxNativeExports
     public static int FsMkDirW(nint pathPtr)
     {
         var path = Marshal.PtrToStringUni(pathPtr) ?? string.Empty;
-        var result = EntryPoints.Value.FsMkDir(path);
+        var progress = CreateDirectProgressReporter("mkdir", path, path);
+        var result = EntryPoints.Value.FsMkDir(path, progress);
         if (result == WfxResultCodes.Success)
         {
             NotifyTotalCommanderPathChanged(path);
@@ -152,7 +153,8 @@ public static class WfxNativeExports
     public static int FsDeleteFileW(nint pathPtr)
     {
         var path = Marshal.PtrToStringUni(pathPtr) ?? string.Empty;
-        var result = EntryPoints.Value.FsDeleteFile(path);
+        var progress = CreateDirectProgressReporter("delete", path, path);
+        var result = EntryPoints.Value.FsDeleteFile(path, progress);
         if (result == WfxResultCodes.Success)
         {
             NotifyTotalCommanderPathChanged(path);
@@ -166,7 +168,8 @@ public static class WfxNativeExports
     public static int FsRemoveDirW(nint pathPtr)
     {
         var path = Marshal.PtrToStringUni(pathPtr) ?? string.Empty;
-        var result = EntryPoints.Value.FsDeleteFile(path);
+        var progress = CreateDirectProgressReporter("delete", path, path);
+        var result = EntryPoints.Value.FsDeleteFile(path, progress);
         if (result == WfxResultCodes.Success)
         {
             NotifyTotalCommanderPathChanged(path);
@@ -184,7 +187,8 @@ public static class WfxNativeExports
 
         var oldName = Marshal.PtrToStringUni(oldNamePtr) ?? string.Empty;
         var newName = Marshal.PtrToStringUni(newNamePtr) ?? string.Empty;
-        var result = EntryPoints.Value.FsRenMovFile(oldName, newName, move != 0);
+        var progress = CreateDirectProgressReporter(move != 0 ? "move" : "copy", oldName, newName);
+        var result = EntryPoints.Value.FsRenMovFile(oldName, newName, move != 0, progress);
         return result;
     }
 

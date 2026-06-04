@@ -33,23 +33,23 @@ public sealed class WfxEntryPoints
         return _runtime.FindClose(findHandle);
     }
 
-    public int FsMkDir(string path)
+    public int FsMkDir(string path, IProgress<WfxTransferProgress>? progress = null)
     {
-        return _runtime.MkDirAsync(path).GetAwaiter().GetResult();
+        return _runtime.MkDirAsync(path, progress).GetAwaiter().GetResult();
     }
 
-    public int FsDeleteFile(string path)
+    public int FsDeleteFile(string path, IProgress<WfxTransferProgress>? progress = null)
     {
-        var result = _runtime.DeleteAsync(path).GetAwaiter().GetResult();
+        var result = _runtime.DeleteAsync(path, progress).GetAwaiter().GetResult();
         return NormalizeDeleteResult(path, result);
     }
 
-    public int FsRenMovFile(string oldName, string newName, bool move)
+    public int FsRenMovFile(string oldName, string newName, bool move, IProgress<WfxTransferProgress>? progress = null)
     {
         // TC may issue same-path callbacks during delete workflows, regardless of move flag.
         if (AreSamePath(oldName, newName))
         {
-            return FsDeleteFile(oldName);
+            return FsDeleteFile(oldName, progress);
         }
 
         if (move)
@@ -62,27 +62,27 @@ public sealed class WfxEntryPoints
             // dms -> dms move: delegate to bridge move endpoint.
             if (sourceIsProviderPath && destinationIsProviderPath)
             {
-                return _runtime.RenameAsync(oldName, newName).GetAwaiter().GetResult();
+                return _runtime.RenameAsync(oldName, newName, progress).GetAwaiter().GetResult();
             }
 
             // dms -> fso move: download to local target then delete source on bridge.
             if (sourceIsProviderPath && !destinationIsProviderPath)
             {
                 var localTargetPath = ResolveLocalMoveTargetPath(oldName, newName);
-                var downloadResult = _runtime.GetFileAsync(oldName, localTargetPath).GetAwaiter().GetResult();
+                var downloadResult = _runtime.GetFileAsync(oldName, localTargetPath, progress).GetAwaiter().GetResult();
                 if (downloadResult != WfxResultCodes.Success)
                 {
                     return downloadResult;
                 }
 
-                var deleteResult = _runtime.DeleteAsync(oldName).GetAwaiter().GetResult();
+                var deleteResult = _runtime.DeleteAsync(oldName, progress).GetAwaiter().GetResult();
                 return NormalizeDeleteResult(oldName, deleteResult);
             }
 
             // fso -> dms move: upload from local source then delete local source.
             if (!sourceIsProviderPath && destinationIsProviderPath)
             {
-                var uploadResult = _runtime.PutFileAsync(oldName, newName, overwrite: true).GetAwaiter().GetResult();
+                var uploadResult = _runtime.PutFileAsync(oldName, newName, overwrite: true, progress).GetAwaiter().GetResult();
                 if (uploadResult != WfxResultCodes.Success)
                 {
                     return uploadResult;
@@ -97,7 +97,7 @@ public sealed class WfxEntryPoints
             return WfxResultCodes.FileNotFound;
         }
 
-        return _runtime.CopyAsync(oldName, newName).GetAwaiter().GetResult();
+        return _runtime.CopyAsync(oldName, newName, progress).GetAwaiter().GetResult();
     }
 
     private static bool LooksLikeWindowsLocalPath(string path)
