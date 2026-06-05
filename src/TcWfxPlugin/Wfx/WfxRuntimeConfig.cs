@@ -40,7 +40,11 @@ internal sealed class WfxRuntimeConfig
 
     public static WfxRuntimeConfig Load()
     {
-        var baseDir = AppContext.BaseDirectory;
+        return Load(AppContext.BaseDirectory);
+    }
+
+    internal static WfxRuntimeConfig Load(string baseDir)
+    {
         var rootPath = Path.Combine(baseDir, RootConfigFileName);
         var nestedPath = Path.Combine(baseDir, NestedConfigFileName);
         var configPath = File.Exists(rootPath)

@@ -1,0 +1,13 @@
+{
+  "bridge": {
+    "url": "http://127.0.0.1:8765/",
+    "timeoutSeconds": 900
+  },
+  "progress": {
+    "steps": 10
+  },
+  "logging": {
+    "enabled": true,
+    "path": "logs"
+  }
+}

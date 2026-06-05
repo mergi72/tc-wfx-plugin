@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 
 $projectPath = Join-Path $PSScriptRoot "..\src\TcWfxPlugin\TcWfxPlugin.csproj"
 $outputPath = Join-Path $PSScriptRoot "..\artifacts\TcWfxPlugin-$RuntimeIdentifier"
+$configTemplatePath = Join-Path $PSScriptRoot "..\config\config.json"
 
 Write-Host "Publishing WFX Native AOT library..."
 Write-Host "Project: $projectPath"
@@ -21,6 +22,13 @@ Write-Host "Output:  $outputPath"
 
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE"
+}
+
+if (Test-Path $configTemplatePath) {
+    $outputConfigDir = Join-Path $outputPath "config"
+    New-Item -ItemType Directory -Path $outputConfigDir -Force | Out-Null
+    Copy-Item -Path $configTemplatePath -Destination (Join-Path $outputConfigDir "config.json") -Force
+    Write-Host "Copied runtime config template to: $outputConfigDir\\config.json"
 }
 
 Write-Host "Publish completed successfully."

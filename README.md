@@ -80,6 +80,7 @@ Additional optional env fallbacks:
 Optional runtime file configuration (preferred for progress):
 
 - Place `config.json` next to `TcWfxPlugin.wfx64`.
+- Repository ships a ready template at `config/config.json`.
 - Configure progress buckets via:
 
 ```json
@@ -121,6 +122,8 @@ Supported `config.json` keys:
 ```
 
 `config.json` can be placed either next to `TcWfxPlugin.wfx64` or in `config/config.json` under the plugin directory.
+
+The publish script automatically copies repository template `config/config.json` to artifact output `config/config.json`.
 
 Cache can also be invalidated explicitly through `WfxEntryPoints.InvalidateProvidersCache()`.
 
@@ -167,6 +170,14 @@ dotnet publish src/TcWfxPlugin/TcWfxPlugin.csproj --configuration Release -r win
 ```powershell
 ./scripts/run-bridge-smoke.ps1 -BridgeRepoPath ../dms-provider-bridge
 ```
+
+- Runtime config smoke (local):
+
+```powershell
+./scripts/run-runtime-config-smoke.ps1
+```
+
+This smoke validates config template presence/shape and runs focused tests that verify runtime config loading, including `logging.enabled=false`.
 
 Optional parameters:
 
