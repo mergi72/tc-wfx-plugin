@@ -2,6 +2,18 @@
 
 Separated C# repository for the Total Commander WFX plugin that integrates with `dms-provider-bridge`.
 
+## Release Scope (v0.1.0-alpha)
+
+Current status:
+- Alfresco provider: supported
+- eDoCat provider: planned / not yet enabled in this alpha milestone
+- FSO provider: experimental / planned
+
+Current intended flow:
+- TC WFX plugin -> bridge -> Alfresco provider
+
+This alpha milestone does not yet include full eDoCat branch enablement.
+
 ## Automation
 
 - CI workflow: `.github/workflows/ci.yml` (restore, build, test on push/PR)
@@ -16,6 +28,7 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 ## Release Notes
 
 - See `CHANGELOG.md` for release history and `v0.2.0` notes.
+- For first external testing scope, see `RELEASE_NOTES_v0.1.0-alpha.md`.
 
 ## License
 
