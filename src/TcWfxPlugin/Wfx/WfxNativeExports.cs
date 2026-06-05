@@ -790,8 +790,7 @@ public static class WfxNativeExports
         private readonly string _destinationPath;
         private readonly int _pluginNumber;
         private readonly ProgressProcDelegate _progressProc;
-        private int _lastPercent = -1;
-        private bool _uploadIntermediateSent;
+        private readonly ProgressSteps _steps = new();
 
         public DirectTcProgressReporter(
             string operation,
@@ -811,47 +810,17 @@ public static class WfxNativeExports
         {
             AppendProgressEntryLog(value);
 
-            var percent = CalculateProgressPercent(value.BytesTransferred, value.TotalBytes);
-
-            if (_lastPercent < 0)
-            {
-                SendPercent(0, value.BytesTransferred, value.TotalBytes);
-                _lastPercent = 0;
-            }
-
-            // Ensure upload always exposes at least one in-progress state between 0 and 100.
-            if (_operation == "upload" && !_uploadIntermediateSent && percent >= 100)
-            {
-                const int intermediatePercent = 1;
-                if (_lastPercent < intermediatePercent)
-                {
-                    SendPercent(intermediatePercent, value.BytesTransferred, value.TotalBytes);
-                    _lastPercent = intermediatePercent;
-                }
-
-                _uploadIntermediateSent = true;
-            }
-
-            if (percent < _lastPercent)
-            {
-                percent = _lastPercent;
-            }
-
-            if (percent == _lastPercent)
+            var rawPercent = CalculateProgressPercent(value.BytesTransferred, value.TotalBytes);
+            var steppedPercent = _steps.Next(rawPercent);
+            if (!steppedPercent.HasValue)
             {
                 AppendDiagnosticLog(
                     ProgressLogPath,
-                    $"{DateTime.Now:HH:mm:ss.fff} {_operation} {value.BytesTransferred}/{value.TotalBytes} percent={percent} callback=skipped-same-percent");
+                    $"{DateTime.Now:HH:mm:ss.fff} {_operation} {value.BytesTransferred}/{value.TotalBytes} percent={rawPercent} callback=skipped-same-step");
                 return;
             }
 
-            SendPercent(percent, value.BytesTransferred, value.TotalBytes);
-            _lastPercent = percent;
-
-            if (_operation == "upload" && percent > 0 && percent < 100)
-            {
-                _uploadIntermediateSent = true;
-            }
+            SendPercent(steppedPercent.Value, value.BytesTransferred, value.TotalBytes);
         }
 
         private static int CalculateProgressPercent(long bytesTransferred, long? totalBytes)
@@ -921,8 +890,7 @@ public static class WfxNativeExports
         private readonly ProgressProcDelegate _progressProc;
         private readonly object _syncRoot = new();
         private readonly Queue<WfxTransferProgress> _pending = new();
-        private int _lastPercent = -1;
-        private bool _uploadIntermediateSent;
+        private readonly ProgressSteps _steps = new();
 
         public ThreadAffinityTcProgressReporter(
             string operation,
@@ -982,46 +950,17 @@ public static class WfxNativeExports
 
         private void SendProgress(WfxTransferProgress value)
         {
-            var percent = CalculateProgressPercent(value.BytesTransferred, value.TotalBytes);
-
-            if (_lastPercent < 0)
-            {
-                SendPercent(0, value.BytesTransferred, value.TotalBytes);
-                _lastPercent = 0;
-            }
-
-            if (_operation == "upload" && !_uploadIntermediateSent && percent >= 100)
-            {
-                const int intermediatePercent = 1;
-                if (_lastPercent < intermediatePercent)
-                {
-                    SendPercent(intermediatePercent, value.BytesTransferred, value.TotalBytes);
-                    _lastPercent = intermediatePercent;
-                }
-
-                _uploadIntermediateSent = true;
-            }
-
-            if (percent < _lastPercent)
-            {
-                percent = _lastPercent;
-            }
-
-            if (percent == _lastPercent)
+            var rawPercent = CalculateProgressPercent(value.BytesTransferred, value.TotalBytes);
+            var steppedPercent = _steps.Next(rawPercent);
+            if (!steppedPercent.HasValue)
             {
                 AppendDiagnosticLog(
                     ProgressLogPath,
-                    $"{DateTime.Now:HH:mm:ss.fff} {_operation} {value.BytesTransferred}/{value.TotalBytes} percent={percent} callback=skipped-same-percent");
+                    $"{DateTime.Now:HH:mm:ss.fff} {_operation} {value.BytesTransferred}/{value.TotalBytes} percent={rawPercent} callback=skipped-same-step");
                 return;
             }
 
-            SendPercent(percent, value.BytesTransferred, value.TotalBytes);
-            _lastPercent = percent;
-
-            if (_operation == "upload" && percent > 0 && percent < 100)
-            {
-                _uploadIntermediateSent = true;
-            }
+            SendPercent(steppedPercent.Value, value.BytesTransferred, value.TotalBytes);
         }
 
         private static int CalculateProgressPercent(long bytesTransferred, long? totalBytes)
@@ -1079,6 +1018,29 @@ public static class WfxNativeExports
             {
                 // Diagnostics must not affect plugin behavior.
             }
+        }
+    }
+
+    private sealed class ProgressSteps
+    {
+        private int _lastStep = -1;
+
+        public int? Next(int rawPercent)
+        {
+            var clampedPercent = Math.Clamp(rawPercent, 0, 100);
+            var step = clampedPercent / 10;
+            if (step < _lastStep)
+            {
+                step = _lastStep;
+            }
+
+            if (step == _lastStep)
+            {
+                return null;
+            }
+
+            _lastStep = step;
+            return step * 10;
         }
     }
 
