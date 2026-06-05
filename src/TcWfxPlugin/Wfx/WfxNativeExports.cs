@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Threading;
+using System.Diagnostics;
 
 namespace TcWfxPlugin.Wfx;
 
@@ -197,6 +198,7 @@ public static class WfxNativeExports
     public static int FsGetFileW(nint remoteNamePtr, nint localNamePtr, int copyFlags, nint remoteInfo)
     {
         _ = remoteInfo;
+        var stopwatch = Stopwatch.StartNew();
 
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
@@ -225,7 +227,11 @@ public static class WfxNativeExports
         var affinityProgress = CreateThreadAffinityProgressReporter("download", remoteName, localName);
         if (affinityProgress is null)
         {
-            return EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags, progress: null);
+            var directResult = EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags, progress: null);
+            AppendDiagnosticLog(
+                ProgressLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} FsGetFileW completed thread={Thread.CurrentThread.ManagedThreadId} result={directResult} elapsedMs={stopwatch.ElapsedMilliseconds}");
+            return directResult;
         }
 
         affinityProgress.Report(new WfxTransferProgress
@@ -238,12 +244,17 @@ public static class WfxNativeExports
         });
 
         var transferTask = Task.Run(() => EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags, affinityProgress));
-        return ExecuteTransferWithThreadAffinity(affinityProgress, transferTask);
+        var result = ExecuteTransferWithThreadAffinity(affinityProgress, transferTask);
+        AppendDiagnosticLog(
+            ProgressLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} FsGetFileW completed thread={Thread.CurrentThread.ManagedThreadId} result={result} elapsedMs={stopwatch.ElapsedMilliseconds}");
+        return result;
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsPutFileW")]
     public static int FsPutFileW(nint localNamePtr, nint remoteNamePtr, int copyFlags)
     {
+        var stopwatch = Stopwatch.StartNew();
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
         AppendDiagnosticLog(
@@ -307,7 +318,11 @@ public static class WfxNativeExports
         var affinityProgress = CreateThreadAffinityProgressReporter("upload", localName, remoteName);
         if (affinityProgress is null)
         {
-            return EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags, progress: null);
+            var directResult = EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags, progress: null);
+            AppendDiagnosticLog(
+                ProgressLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} FsPutFileW completed thread={Thread.CurrentThread.ManagedThreadId} result={directResult} elapsedMs={stopwatch.ElapsedMilliseconds}");
+            return directResult;
         }
 
         affinityProgress.Report(new WfxTransferProgress
@@ -320,7 +335,11 @@ public static class WfxNativeExports
         });
 
         var transferTask = Task.Run(() => EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags, affinityProgress));
-        return ExecuteTransferWithThreadAffinity(affinityProgress, transferTask);
+        var result = ExecuteTransferWithThreadAffinity(affinityProgress, transferTask);
+        AppendDiagnosticLog(
+            ProgressLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} FsPutFileW completed thread={Thread.CurrentThread.ManagedThreadId} result={result} elapsedMs={stopwatch.ElapsedMilliseconds}");
+        return result;
     }
 
     private static int ExecuteTransferWithThreadAffinity(ThreadAffinityTcProgressReporter reporter, Task<int> transferTask)
@@ -815,9 +834,7 @@ public static class WfxNativeExports
 
         private void SendPercent(int percent, long bytesTransferred, long? totalBytes)
         {
-            var tcPercent = string.Equals(_operation, "upload", StringComparison.OrdinalIgnoreCase)
-                ? -percent
-                : percent;
+            var tcPercent = percent;
             var threadId = Thread.CurrentThread.ManagedThreadId;
 
             AppendDiagnosticLog(
@@ -863,15 +880,7 @@ public static class WfxNativeExports
         private readonly int _pluginNumber;
         private readonly ProgressProcDelegate _progressProc;
         private readonly object _syncRoot = new();
-
-        private WfxTransferProgress _latest = new()
-        {
-            Operation = string.Empty,
-            SourcePath = string.Empty,
-            DestinationPath = string.Empty,
-        };
-        private long _latestVersion;
-        private long _processedVersion;
+        private readonly Queue<WfxTransferProgress> _pending = new();
         private int _lastPercent = -1;
         private bool _uploadIntermediateSent;
 
@@ -897,8 +906,14 @@ public static class WfxNativeExports
 
             lock (_syncRoot)
             {
-                _latest = value;
-                _latestVersion++;
+                _pending.Enqueue(new WfxTransferProgress
+                {
+                    Operation = value.Operation,
+                    SourcePath = value.SourcePath,
+                    DestinationPath = value.DestinationPath,
+                    BytesTransferred = value.BytesTransferred,
+                    TotalBytes = value.TotalBytes,
+                });
             }
         }
 
@@ -909,13 +924,12 @@ public static class WfxNativeExports
                 WfxTransferProgress current;
                 lock (_syncRoot)
                 {
-                    if (_processedVersion == _latestVersion)
+                    if (_pending.Count == 0)
                     {
                         return;
                     }
 
-                    current = _latest;
-                    _processedVersion = _latestVersion;
+                    current = _pending.Dequeue();
                 }
 
                 SendProgress(current);
@@ -971,9 +985,7 @@ public static class WfxNativeExports
 
         private void SendPercent(int percent, long bytesTransferred, long? totalBytes)
         {
-            var tcPercent = string.Equals(_operation, "upload", StringComparison.OrdinalIgnoreCase)
-                ? -percent
-                : percent;
+            var tcPercent = percent;
             var threadId = Thread.CurrentThread.ManagedThreadId;
 
             AppendDiagnosticLog(
