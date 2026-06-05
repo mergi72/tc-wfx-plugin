@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Threading;
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace TcWfxPlugin.Wfx;
 
@@ -29,10 +30,13 @@ public static class WfxNativeExports
     private const string ProgressEntryLogPath = "c:\\temp\\wfx-progress-entry.log";
     private const string StatusLogPath = "c:\\temp\\wfx-status.log";
     private const string ProgressSelfTestEnvVar = "TC_WFX_PROGRESS_SELFTEST";
+    private const string ProgressStepsEnvVar = "TC_WFX_PROGRESS_STEPS";
+    private const string RuntimeConfigFileName = "config.json";
     private static FsDefaultParamStruct? _defaultParams;
     private static int _pluginNumber;
     private static ProgressProcDelegate? _progressProc;
     private static RequestProcDelegate? _requestProc;
+    private static readonly int ProgressStepBuckets = ResolveProgressStepBuckets();
 
     [UnmanagedCallersOnly(EntryPoint = "FsInitW")]
     public static int FsInitW(int pluginNr, nint progressProc, nint logProc, nint requestProc)
@@ -790,7 +794,7 @@ public static class WfxNativeExports
         private readonly string _destinationPath;
         private readonly int _pluginNumber;
         private readonly ProgressProcDelegate _progressProc;
-        private readonly ProgressSteps _steps = new();
+        private readonly ProgressSteps _steps = new(ProgressStepBuckets);
 
         public DirectTcProgressReporter(
             string operation,
@@ -890,7 +894,7 @@ public static class WfxNativeExports
         private readonly ProgressProcDelegate _progressProc;
         private readonly object _syncRoot = new();
         private readonly Queue<WfxTransferProgress> _pending = new();
-        private readonly ProgressSteps _steps = new();
+        private readonly ProgressSteps _steps = new(ProgressStepBuckets);
 
         public ThreadAffinityTcProgressReporter(
             string operation,
@@ -1021,14 +1025,76 @@ public static class WfxNativeExports
         }
     }
 
+    private static int ResolveProgressStepBuckets()
+    {
+        if (TryReadProgressStepsFromConfig(out var configSteps))
+        {
+            return Math.Clamp(configSteps, 1, 100);
+        }
+
+        var raw = Environment.GetEnvironmentVariable(ProgressStepsEnvVar);
+        if (!int.TryParse(raw, out var configured))
+        {
+            return 10;
+        }
+
+        return Math.Clamp(configured, 1, 100);
+    }
+
+    private static bool TryReadProgressStepsFromConfig(out int steps)
+    {
+        steps = 0;
+
+        try
+        {
+            var configPath = Path.Combine(AppContext.BaseDirectory, RuntimeConfigFileName);
+            if (!File.Exists(configPath))
+            {
+                return false;
+            }
+
+            using var stream = File.OpenRead(configPath);
+            using var document = JsonDocument.Parse(stream);
+            if (!document.RootElement.TryGetProperty("progress", out var progressElement)
+                || progressElement.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (!progressElement.TryGetProperty("steps", out var stepsElement)
+                || stepsElement.ValueKind != JsonValueKind.Number)
+            {
+                return false;
+            }
+
+            if (!stepsElement.TryGetInt32(out var parsedSteps) || parsedSteps <= 0)
+            {
+                return false;
+            }
+
+            steps = parsedSteps;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private sealed class ProgressSteps
     {
+        private readonly int _steps;
         private int _lastStep = -1;
+
+        public ProgressSteps(int steps)
+        {
+            _steps = Math.Clamp(steps, 1, 100);
+        }
 
         public int? Next(int rawPercent)
         {
             var clampedPercent = Math.Clamp(rawPercent, 0, 100);
-            var step = clampedPercent / 10;
+            var step = (clampedPercent * _steps) / 100;
             if (step < _lastStep)
             {
                 step = _lastStep;
@@ -1040,7 +1106,7 @@ public static class WfxNativeExports
             }
 
             _lastStep = step;
-            return step * 10;
+            return (step * 100) / _steps;
         }
     }
 

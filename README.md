@@ -69,6 +69,26 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 - `TC_WFX_PROVIDERS_CACHE_SECONDS` (optional TTL for cached root providers loaded from bridge; default `30`, `0` disables cache)
 - `TC_WFX_FIND_CONTEXT_TTL_SECONDS` (optional TTL for inactive find contexts; default `600`, `0` disables TTL cleanup)
 - `TC_WFX_MAX_FIND_CONTEXTS` (optional hard limit for concurrently tracked find contexts; default `512`)
+- `TC_WFX_PROGRESS_STEPS` (optional fallback number of progress buckets for TC callback throttling; default `10`, allowed range `1..100`)
+
+Optional runtime file configuration (preferred for progress):
+
+- Place `config.json` next to `TcWfxPlugin.wfx64`.
+- Configure progress buckets via:
+
+```json
+{
+	"progress": {
+		"steps": 10
+	}
+}
+```
+
+Resolution order for progress steps:
+
+1. `config.json` -> `progress.steps`
+2. `TC_WFX_PROGRESS_STEPS`
+3. default `10`
 
 Cache can also be invalidated explicitly through `WfxEntryPoints.InvalidateProvidersCache()`.
 
