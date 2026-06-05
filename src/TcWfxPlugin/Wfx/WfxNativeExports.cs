@@ -2,7 +2,6 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Threading;
 using System.Diagnostics;
-using System.Text.Json;
 
 namespace TcWfxPlugin.Wfx;
 
@@ -23,20 +22,21 @@ public static class WfxNativeExports
     private static readonly Lazy<WfxEntryPoints> EntryPoints = new(CreateEntryPoints);
     private static readonly object CallbackSyncRoot = new();
     private static readonly object DiagnosticLogSyncRoot = new();
-    private const string DiagnosticLogDirectory = "c:\\temp";
-    private const string InitLogPath = "c:\\temp\\wfx-init.log";
-    private const string DefaultParamsLogPath = "c:\\temp\\wfx-default-params.log";
-    private const string ProgressLogPath = "c:\\temp\\wfx-progress.log";
-    private const string ProgressEntryLogPath = "c:\\temp\\wfx-progress-entry.log";
-    private const string StatusLogPath = "c:\\temp\\wfx-status.log";
+    private static readonly WfxRuntimeConfig RuntimeConfig = WfxRuntimeConfig.Load();
+    private static readonly bool DiagnosticLoggingEnabled = RuntimeConfig.LoggingEnabled;
+    private static readonly string DiagnosticLogDirectory = RuntimeConfig.LogDirectoryPath;
+    private static readonly string InitLogPath = Path.Combine(DiagnosticLogDirectory, "wfx-init.log");
+    private static readonly string DefaultParamsLogPath = Path.Combine(DiagnosticLogDirectory, "wfx-default-params.log");
+    private static readonly string ProgressLogPath = Path.Combine(DiagnosticLogDirectory, "wfx-progress.log");
+    private static readonly string ProgressEntryLogPath = Path.Combine(DiagnosticLogDirectory, "wfx-progress-entry.log");
+    private static readonly string ProgressEntryHandlerLogPath = Path.Combine(DiagnosticLogDirectory, "wfx-progress-entry-handler.log");
+    private static readonly string StatusLogPath = Path.Combine(DiagnosticLogDirectory, "wfx-status.log");
     private const string ProgressSelfTestEnvVar = "TC_WFX_PROGRESS_SELFTEST";
-    private const string ProgressStepsEnvVar = "TC_WFX_PROGRESS_STEPS";
-    private const string RuntimeConfigFileName = "config.json";
     private static FsDefaultParamStruct? _defaultParams;
     private static int _pluginNumber;
     private static ProgressProcDelegate? _progressProc;
     private static RequestProcDelegate? _requestProc;
-    private static readonly int ProgressStepBuckets = ResolveProgressStepBuckets();
+    private static readonly int ProgressStepBuckets = RuntimeConfig.ProgressSteps;
 
     [UnmanagedCallersOnly(EntryPoint = "FsInitW")]
     public static int FsInitW(int pluginNr, nint progressProc, nint logProc, nint requestProc)
@@ -451,13 +451,13 @@ public static class WfxNativeExports
 
     private static WfxEntryPoints CreateEntryPoints()
     {
-        var baseUrl = Environment.GetEnvironmentVariable("TC_WFX_BRIDGE_URL") ?? "http://127.0.0.1:8765/";
+        var baseUrl = RuntimeConfig.BridgeUrl;
         var authProvider = new TcDialogAuthProvider(
             TryRequestValue,
             TryConfirmYesNo,
             new WindowsCredentialStore(),
             "tc-wfx/bridge");
-        var client = new WfxBridgeClient(baseUrl);
+        var client = new WfxBridgeClient(baseUrl, RuntimeConfig.BridgeTimeout);
         var facade = new WfxPluginFacade(client);
         var runtime = new WfxPluginRuntime(facade, authProvider);
         runtime.TransferProgressChanged += OnTransferProgressChanged;
@@ -466,6 +466,11 @@ public static class WfxNativeExports
 
     private static void OnTransferProgressChanged(WfxTransferProgress progress)
     {
+        if (!DiagnosticLoggingEnabled)
+        {
+            return;
+        }
+
         bool hasProgressProc;
         int pluginNumber;
         var threadId = Thread.CurrentThread.ManagedThreadId;
@@ -478,10 +483,10 @@ public static class WfxNativeExports
         lock (DiagnosticLogSyncRoot)
         {
             File.AppendAllText(
-                @"C:\temp\wfx-progress-entry.log",
+                ProgressEntryLogPath,
                 $"{DateTime.Now:HH:mm:ss.fff} ENTER thread={threadId} {progress.Operation} {progress.BytesTransferred}/{progress.TotalBytes} {progress.SourcePath} -> {progress.DestinationPath}\r\n");
             File.AppendAllText(
-                @"C:\temp\wfx-progress-entry-handler.log",
+                ProgressEntryHandlerLogPath,
                 $"{DateTime.Now:HH:mm:ss.fff} EVENT thread={threadId} {progress.Operation} {progress.BytesTransferred}/{progress.TotalBytes} {progress.SourcePath} -> {progress.DestinationPath} progressProc={(hasProgressProc ? "set" : "null")} pluginNr={pluginNumber}\r\n");
         }
     }
@@ -762,6 +767,11 @@ public static class WfxNativeExports
 
     private static void AppendDiagnosticLog(string filePath, string line)
     {
+        if (!DiagnosticLoggingEnabled)
+        {
+            return;
+        }
+
         try
         {
             lock (DiagnosticLogSyncRoot)
@@ -1022,62 +1032,6 @@ public static class WfxNativeExports
             {
                 // Diagnostics must not affect plugin behavior.
             }
-        }
-    }
-
-    private static int ResolveProgressStepBuckets()
-    {
-        if (TryReadProgressStepsFromConfig(out var configSteps))
-        {
-            return Math.Clamp(configSteps, 1, 100);
-        }
-
-        var raw = Environment.GetEnvironmentVariable(ProgressStepsEnvVar);
-        if (!int.TryParse(raw, out var configured))
-        {
-            return 10;
-        }
-
-        return Math.Clamp(configured, 1, 100);
-    }
-
-    private static bool TryReadProgressStepsFromConfig(out int steps)
-    {
-        steps = 0;
-
-        try
-        {
-            var configPath = Path.Combine(AppContext.BaseDirectory, RuntimeConfigFileName);
-            if (!File.Exists(configPath))
-            {
-                return false;
-            }
-
-            using var stream = File.OpenRead(configPath);
-            using var document = JsonDocument.Parse(stream);
-            if (!document.RootElement.TryGetProperty("progress", out var progressElement)
-                || progressElement.ValueKind != JsonValueKind.Object)
-            {
-                return false;
-            }
-
-            if (!progressElement.TryGetProperty("steps", out var stepsElement)
-                || stepsElement.ValueKind != JsonValueKind.Number)
-            {
-                return false;
-            }
-
-            if (!stepsElement.TryGetInt32(out var parsedSteps) || parsedSteps <= 0)
-            {
-                return false;
-            }
-
-            steps = parsedSteps;
-            return true;
-        }
-        catch
-        {
-            return false;
         }
     }
 

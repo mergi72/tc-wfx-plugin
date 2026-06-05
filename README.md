@@ -71,6 +71,12 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 - `TC_WFX_MAX_FIND_CONTEXTS` (optional hard limit for concurrently tracked find contexts; default `512`)
 - `TC_WFX_PROGRESS_STEPS` (optional fallback number of progress buckets for TC callback throttling; default `10`, allowed range `1..100`)
 
+Additional optional env fallbacks:
+
+- `TC_WFX_BRIDGE_TIMEOUT_SECONDS` (fallback bridge HTTP timeout in seconds)
+- `TC_WFX_LOGGING_ENABLED` (fallback `true/false` toggle for diagnostic logs)
+- `TC_WFX_LOG_DIR` (fallback log directory; absolute or relative to plugin directory)
+
 Optional runtime file configuration (preferred for progress):
 
 - Place `config.json` next to `TcWfxPlugin.wfx64`.
@@ -89,6 +95,32 @@ Resolution order for progress steps:
 1. `config.json` -> `progress.steps`
 2. `TC_WFX_PROGRESS_STEPS`
 3. default `10`
+
+Resolution order for runtime settings in general:
+
+1. `config.json`
+2. corresponding environment variable
+3. built-in default
+
+Supported `config.json` keys:
+
+```json
+{
+	"bridge": {
+		"url": "http://127.0.0.1:8765/",
+		"timeoutSeconds": 900
+	},
+	"progress": {
+		"steps": 10
+	},
+	"logging": {
+		"enabled": true,
+		"path": "logs"
+	}
+}
+```
+
+`config.json` can be placed either next to `TcWfxPlugin.wfx64` or in `config/config.json` under the plugin directory.
 
 Cache can also be invalidated explicitly through `WfxEntryPoints.InvalidateProvidersCache()`.
 

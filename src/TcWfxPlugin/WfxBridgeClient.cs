@@ -27,7 +27,12 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
     public string BaseUrl => _httpClient.BaseAddress?.ToString() ?? string.Empty;
 
     public WfxBridgeClient(string baseUrl)
-        : this(CreateHttpClient(baseUrl))
+        : this(baseUrl, timeout: null)
+    {
+    }
+
+    public WfxBridgeClient(string baseUrl, TimeSpan? timeout)
+        : this(CreateHttpClient(baseUrl, timeout))
     {
     }
 
@@ -600,17 +605,21 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             (int)response.StatusCode);
     }
 
-    private static HttpClient CreateHttpClient(string baseUrl)
+    private static HttpClient CreateHttpClient(string baseUrl, TimeSpan? timeout)
     {
         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
         {
             throw new ArgumentException("Base URL must be an absolute URI.", nameof(baseUrl));
         }
 
+        var resolvedTimeout = timeout.HasValue && timeout.Value > TimeSpan.Zero
+            ? timeout.Value
+            : DefaultTimeout;
+
         return new HttpClient
         {
             BaseAddress = uri,
-            Timeout = DefaultTimeout,
+            Timeout = resolvedTimeout,
         };
     }
 }
