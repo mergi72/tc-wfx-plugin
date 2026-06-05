@@ -811,10 +811,7 @@ public static class WfxNativeExports
         {
             AppendProgressEntryLog(value);
 
-            var totalBytes = value.TotalBytes.GetValueOrDefault();
-            var percent = totalBytes > 0
-                ? (int)Math.Clamp((value.BytesTransferred * 100L) / totalBytes, 0, 100)
-                : 0;
+            var percent = CalculateProgressPercent(value.BytesTransferred, value.TotalBytes);
 
             if (_lastPercent < 0)
             {
@@ -855,6 +852,23 @@ public static class WfxNativeExports
             {
                 _uploadIntermediateSent = true;
             }
+        }
+
+        private static int CalculateProgressPercent(long bytesTransferred, long? totalBytes)
+        {
+            if (totalBytes is > 0)
+            {
+                return (int)Math.Clamp((bytesTransferred * 100L) / totalBytes.GetValueOrDefault(), 0, 100);
+            }
+
+            if (bytesTransferred <= 0)
+            {
+                return 0;
+            }
+
+            // Unknown total size: keep progress moving in 1..99 while bytes arrive.
+            var syntheticPercent = 1 + (int)Math.Clamp(bytesTransferred / (512 * 1024), 0, 98);
+            return Math.Clamp(syntheticPercent, 1, 99);
         }
 
         private void SendPercent(int percent, long bytesTransferred, long? totalBytes)
@@ -968,10 +982,7 @@ public static class WfxNativeExports
 
         private void SendProgress(WfxTransferProgress value)
         {
-            var totalBytes = value.TotalBytes.GetValueOrDefault();
-            var percent = totalBytes > 0
-                ? (int)Math.Clamp((value.BytesTransferred * 100L) / totalBytes, 0, 100)
-                : 0;
+            var percent = CalculateProgressPercent(value.BytesTransferred, value.TotalBytes);
 
             if (_lastPercent < 0)
             {
@@ -1011,6 +1022,23 @@ public static class WfxNativeExports
             {
                 _uploadIntermediateSent = true;
             }
+        }
+
+        private static int CalculateProgressPercent(long bytesTransferred, long? totalBytes)
+        {
+            if (totalBytes is > 0)
+            {
+                return (int)Math.Clamp((bytesTransferred * 100L) / totalBytes.GetValueOrDefault(), 0, 100);
+            }
+
+            if (bytesTransferred <= 0)
+            {
+                return 0;
+            }
+
+            // Unknown total size: keep progress moving in 1..99 while bytes arrive.
+            var syntheticPercent = 1 + (int)Math.Clamp(bytesTransferred / (512 * 1024), 0, 98);
+            return Math.Clamp(syntheticPercent, 1, 99);
         }
 
         private void SendPercent(int percent, long bytesTransferred, long? totalBytes)
