@@ -134,12 +134,18 @@ internal sealed class WfxTransferService
             return WfxResultCodes.FileNotFound;
         }
 
+        // Pre-fetch the remote file size so TC shows progress from the very start,
+        // before the potentially slow DownloadRawAsync response headers arrive.
+        var expectedSize = await TryGetRemoteSizeAsync(sourceProviderPath, cancellationToken);
+
         using var operation = _progressReporterFactory.Create(
             progress,
             operation: "download",
             sourcePath: totalCommanderSourcePath,
             destinationPath: localTargetPath,
-            totalBytes: null);
+            totalBytes: expectedSize);
+
+        operation.Report(0);
 
         var rawDownload = await _facade.DownloadRawAsync(sourceProviderPath, _authProvider.GetAuthContext(), cancellationToken);
         if (rawDownload is not null)
@@ -157,7 +163,7 @@ internal sealed class WfxTransferService
                     Directory.CreateDirectory(rawTargetDirectory);
                 }
 
-                var totalBytes = rawDownload.Session.ContentLength;
+                var totalBytes = rawDownload.Session.ContentLength ?? expectedSize;
                 var rawBytesTransferred = 0L;
                 operation.SetTotalBytes(totalBytes);
                 operation.Report(0);
@@ -361,6 +367,36 @@ internal sealed class WfxTransferService
         uploadFileName = leaf;
         var parentPath = slashIndex <= 0 ? "/" : normalizedPath[..slashIndex];
         uploadDestinationProviderPath = $"{parsed.Provider}:{parentPath}";
+    }
+
+    private async Task<long?> TryGetRemoteSizeAsync(string providerPath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _facade.GetItemInfoAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
+            if (!response.Ok || response.Data.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            if (response.Data.TryGetProperty("size", out var sizeProperty)
+                && sizeProperty.ValueKind == JsonValueKind.Number
+                && sizeProperty.TryGetInt64(out var size)
+                && size > 0)
+            {
+                return size;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Best-effort: if stat fails, continue download without known size.
+        }
+
+        return null;
     }
 
     private static bool TryGetIsFolder(JsonElement data, out bool isFolder)
