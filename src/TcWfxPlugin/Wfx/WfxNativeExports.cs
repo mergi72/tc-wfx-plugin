@@ -204,6 +204,9 @@ public static class WfxNativeExports
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
         AppendDiagnosticLog(
             ProgressLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} GET wrapper start thread={Thread.CurrentThread.ManagedThreadId} remote={remoteName} local={localName}");
+        AppendDiagnosticLog(
+            ProgressLogPath,
             $"{DateTime.Now:HH:mm:ss.fff} FsGetFileW thread={Thread.CurrentThread.ManagedThreadId} remote={remoteName} local={localName}");
 
         var effectiveCopyFlags = copyFlags;
@@ -224,7 +227,7 @@ public static class WfxNativeExports
             }
         }
 
-        var affinityProgress = CreateThreadAffinityProgressReporter("download", remoteName, localName);
+        var affinityProgress = CreateThreadAffinityProgressReporter("download", remoteName, localName, "GET");
         if (affinityProgress is null)
         {
             var directResult = EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags, progress: null);
@@ -244,7 +247,10 @@ public static class WfxNativeExports
         });
 
         var transferTask = Task.Run(() => EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags, affinityProgress));
-        var result = ExecuteTransferWithThreadAffinity(affinityProgress, transferTask);
+        var result = ExecuteTransferWithThreadAffinity("GET", affinityProgress, transferTask);
+        AppendDiagnosticLog(
+            ProgressLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} GET wrapper completed thread={Thread.CurrentThread.ManagedThreadId} result={result} elapsedMs={stopwatch.ElapsedMilliseconds}");
         AppendDiagnosticLog(
             ProgressLogPath,
             $"{DateTime.Now:HH:mm:ss.fff} FsGetFileW completed thread={Thread.CurrentThread.ManagedThreadId} result={result} elapsedMs={stopwatch.ElapsedMilliseconds}");
@@ -257,6 +263,9 @@ public static class WfxNativeExports
         var stopwatch = Stopwatch.StartNew();
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
+        AppendDiagnosticLog(
+            ProgressLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} PUT wrapper start thread={Thread.CurrentThread.ManagedThreadId} local={localName} remote={remoteName}");
         AppendDiagnosticLog(
             ProgressLogPath,
             $"{DateTime.Now:HH:mm:ss.fff} FsPutFileW thread={Thread.CurrentThread.ManagedThreadId} local={localName} remote={remoteName}");
@@ -315,7 +324,7 @@ public static class WfxNativeExports
             return selfTestResult.Value;
         }
 
-        var affinityProgress = CreateThreadAffinityProgressReporter("upload", localName, remoteName);
+        var affinityProgress = CreateThreadAffinityProgressReporter("upload", localName, remoteName, "PUT");
         if (affinityProgress is null)
         {
             var directResult = EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags, progress: null);
@@ -335,25 +344,41 @@ public static class WfxNativeExports
         });
 
         var transferTask = Task.Run(() => EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags, affinityProgress));
-        var result = ExecuteTransferWithThreadAffinity(affinityProgress, transferTask);
+        var result = ExecuteTransferWithThreadAffinity("PUT", affinityProgress, transferTask);
+        AppendDiagnosticLog(
+            ProgressLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} PUT wrapper completed thread={Thread.CurrentThread.ManagedThreadId} result={result} elapsedMs={stopwatch.ElapsedMilliseconds}");
         AppendDiagnosticLog(
             ProgressLogPath,
             $"{DateTime.Now:HH:mm:ss.fff} FsPutFileW completed thread={Thread.CurrentThread.ManagedThreadId} result={result} elapsedMs={stopwatch.ElapsedMilliseconds}");
         return result;
     }
 
-    private static int ExecuteTransferWithThreadAffinity(ThreadAffinityTcProgressReporter reporter, Task<int> transferTask)
+    private static int ExecuteTransferWithThreadAffinity(string diagnosticTag, ThreadAffinityTcProgressReporter reporter, Task<int> transferTask)
     {
         while (true)
         {
-            reporter.DrainPendingCallbacks();
+            var drained = reporter.DrainPendingCallbacks();
+            if (drained > 0)
+            {
+                AppendDiagnosticLog(
+                    ProgressLogPath,
+                    $"{DateTime.Now:HH:mm:ss.fff} {diagnosticTag} affinity drain thread={Thread.CurrentThread.ManagedThreadId} drained={drained}");
+            }
+
             if (transferTask.Wait(20))
             {
                 break;
             }
         }
 
-        reporter.DrainPendingCallbacks();
+        var finalDrained = reporter.DrainPendingCallbacks();
+        if (finalDrained > 0)
+        {
+            AppendDiagnosticLog(
+                ProgressLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} {diagnosticTag} affinity drain thread={Thread.CurrentThread.ManagedThreadId} drained={finalDrained} final=true");
+        }
 
         var result = transferTask.GetAwaiter().GetResult();
         return reporter.UserAborted ? WfxResultCodes.UserAbort : result;
@@ -478,7 +503,7 @@ public static class WfxNativeExports
         return new DirectTcProgressReporter(operation, sourcePath, destinationPath, pluginNumber, progressProc);
     }
 
-    private static ThreadAffinityTcProgressReporter? CreateThreadAffinityProgressReporter(string operation, string sourcePath, string destinationPath)
+    private static ThreadAffinityTcProgressReporter? CreateThreadAffinityProgressReporter(string operation, string sourcePath, string destinationPath, string diagnosticTag)
     {
         ProgressProcDelegate? progressProc;
         int pluginNumber;
@@ -496,7 +521,7 @@ public static class WfxNativeExports
             return null;
         }
 
-        return new ThreadAffinityTcProgressReporter(operation, sourcePath, destinationPath, pluginNumber, progressProc);
+        return new ThreadAffinityTcProgressReporter(operation, sourcePath, destinationPath, pluginNumber, progressProc, diagnosticTag);
     }
 
     private static void NotifyTotalCommanderPathChanged(string path)
@@ -875,6 +900,7 @@ public static class WfxNativeExports
     private sealed class ThreadAffinityTcProgressReporter : IProgress<WfxTransferProgress>
     {
         private readonly string _operation;
+        private readonly string _diagnosticTag;
         private readonly string _sourcePath;
         private readonly string _destinationPath;
         private readonly int _pluginNumber;
@@ -889,9 +915,11 @@ public static class WfxNativeExports
             string sourcePath,
             string destinationPath,
             int pluginNumber,
-            ProgressProcDelegate progressProc)
+            ProgressProcDelegate progressProc,
+            string diagnosticTag)
         {
             _operation = operation;
+            _diagnosticTag = diagnosticTag;
             _sourcePath = sourcePath;
             _destinationPath = destinationPath;
             _pluginNumber = pluginNumber;
@@ -917,8 +945,9 @@ public static class WfxNativeExports
             }
         }
 
-        public void DrainPendingCallbacks()
+        public int DrainPendingCallbacks()
         {
+            var drained = 0;
             while (true)
             {
                 WfxTransferProgress current;
@@ -926,13 +955,14 @@ public static class WfxNativeExports
                 {
                     if (_pending.Count == 0)
                     {
-                        return;
+                        return drained;
                     }
 
                     current = _pending.Dequeue();
                 }
 
                 SendProgress(current);
+                drained++;
             }
         }
 
@@ -990,13 +1020,13 @@ public static class WfxNativeExports
 
             AppendDiagnosticLog(
                 ProgressLogPath,
-                $"{DateTime.Now:HH:mm:ss.fff} {_operation} {bytesTransferred}/{totalBytes} percent={percent} tcPercent={tcPercent} thread={threadId} callback=before");
+                $"{DateTime.Now:HH:mm:ss.fff} {_diagnosticTag} callback percent={percent} tcPercent={tcPercent} thread={threadId} {_operation} {bytesTransferred}/{totalBytes} callback=before");
 
             var callbackResult = _progressProc(_pluginNumber, _sourcePath, _destinationPath, tcPercent);
 
             AppendDiagnosticLog(
                 ProgressLogPath,
-                $"{DateTime.Now:HH:mm:ss.fff} {_operation} {bytesTransferred}/{totalBytes} percent={percent} tcPercent={tcPercent} thread={threadId} callback=result={callbackResult}");
+                $"{DateTime.Now:HH:mm:ss.fff} {_diagnosticTag} callback percent={percent} tcPercent={tcPercent} thread={threadId} {_operation} {bytesTransferred}/{totalBytes} callback=result={callbackResult}");
 
             if (callbackResult != 0)
             {

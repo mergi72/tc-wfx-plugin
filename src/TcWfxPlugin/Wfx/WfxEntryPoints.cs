@@ -237,6 +237,7 @@ public sealed class WfxEntryPoints
     public int FsGetFile(string remoteName, string localName, int copyFlags = 0, IProgress<WfxTransferProgress>? progress = null)
     {
         var options = ParseCopyFlags(copyFlags);
+        var effectiveLocalPath = ResolveLocalMoveTargetPath(remoteName, localName);
 
         // TC may call FsGetFile for plugin->plugin copy. Besides classic "\\provider\\..."
         // paths, TC can also pass a provider path without a leading slash.
@@ -258,12 +259,12 @@ public sealed class WfxEntryPoints
             return WfxResultCodes.Success;
         }
 
-        if (!options.Overwrite && File.Exists(localName))
+        if (!options.Overwrite && File.Exists(effectiveLocalPath))
         {
             return WfxResultCodes.WriteError;
         }
 
-        var downloadResult = _runtime.GetFileAsync(remoteName, localName, progress).GetAwaiter().GetResult();
+        var downloadResult = _runtime.GetFileAsync(remoteName, effectiveLocalPath, progress).GetAwaiter().GetResult();
         if (downloadResult != WfxResultCodes.Success)
         {
             return downloadResult;

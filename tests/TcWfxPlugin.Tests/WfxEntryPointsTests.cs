@@ -732,6 +732,30 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsGetFile_WhenLocalTargetIsDirectory_AppendsRemoteLeafName()
+    {
+        var entryPoints = CreateEntryPoints();
+        var localDirectory = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(localDirectory);
+        var expectedFilePath = Path.Combine(localDirectory, "file.txt");
+
+        try
+        {
+            var result = entryPoints.FsGetFile("\\edocat\\folder\\file.txt", localDirectory, copyFlags: 0x01);
+
+            Assert.Equal(WfxResultCodes.Success, result);
+            Assert.True(File.Exists(expectedFilePath));
+        }
+        finally
+        {
+            if (Directory.Exists(localDirectory))
+            {
+                Directory.Delete(localDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void FsGetFile_PluginTargetPath_UsesDirectCopyInsteadOfDownload()
     {
         var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" });
