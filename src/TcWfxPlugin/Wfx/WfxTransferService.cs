@@ -146,6 +146,7 @@ internal sealed class WfxTransferService
             totalBytes: expectedSize);
 
         operation.Report(0);
+        ReportDownloadStage(operation, expectedSize, 1);
 
         var rawDownload = await _facade.DownloadRawAsync(sourceProviderPath, _authProvider.GetAuthContext(), cancellationToken);
         if (rawDownload is not null)
@@ -166,7 +167,7 @@ internal sealed class WfxTransferService
                 var totalBytes = rawDownload.Session.ContentLength ?? expectedSize;
                 var rawBytesTransferred = 0L;
                 operation.SetTotalBytes(totalBytes);
-                operation.Report(0);
+                ReportDownloadStage(operation, totalBytes, 5);
 
                 var buffer = new byte[IoChunkSize];
                 await using (var output = new FileStream(localTargetPath, FileMode.Create, FileAccess.Write, FileShare.None, IoChunkSize, useAsync: true))
@@ -184,7 +185,14 @@ internal sealed class WfxTransferService
                         await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                         rawBytesTransferred += read;
 
-                        operation.Report(rawBytesTransferred);
+                        if (totalBytes is > 0)
+                        {
+                            operation.Report(MapDownloadReadToDisplayBytes(rawBytesTransferred, totalBytes.Value));
+                        }
+                        else
+                        {
+                            operation.Report(rawBytesTransferred);
+                        }
                     }
                 }
 
@@ -223,7 +231,7 @@ internal sealed class WfxTransferService
 
         var bytesTransferred = 0L;
         operation.SetTotalBytes(rawContent.LongLength);
-        operation.Report(bytesTransferred);
+        ReportDownloadStage(operation, rawContent.LongLength, 5);
 
         await using (var output = new FileStream(localTargetPath, FileMode.Create, FileAccess.Write, FileShare.None, IoChunkSize, useAsync: true))
         {
@@ -237,7 +245,7 @@ internal sealed class WfxTransferService
                 offset += count;
                 bytesTransferred += count;
 
-                operation.Report(bytesTransferred);
+                operation.Report(MapDownloadReadToDisplayBytes(bytesTransferred, rawContent.LongLength));
             }
         }
 
@@ -397,6 +405,61 @@ internal sealed class WfxTransferService
         }
 
         return null;
+    }
+
+    private static void ReportDownloadStage(IWfxProgressReporter operation, long? totalBytes, int percent)
+    {
+        if (percent <= 0)
+        {
+            operation.Report(0);
+            return;
+        }
+
+        if (totalBytes is > 0)
+        {
+            operation.Report(CalculateProgressBytesForPercent(totalBytes.Value, percent));
+            return;
+        }
+
+        // Unknown total size: reporter in native layer maps positive bytes to visible progress.
+        operation.Report(percent);
+    }
+
+    private static long MapDownloadReadToDisplayBytes(long bytesTransferred, long totalBytes)
+    {
+        if (totalBytes <= 0)
+        {
+            return bytesTransferred;
+        }
+
+        var clampedBytes = Math.Clamp(bytesTransferred, 0L, totalBytes);
+        var startBytes = CalculateProgressBytesForPercent(totalBytes, 5);
+        var endBytes = CalculateProgressBytesForPercent(totalBytes, 95);
+        var spanBytes = Math.Max(0L, endBytes - startBytes);
+
+        if (spanBytes == 0)
+        {
+            return startBytes;
+        }
+
+        return startBytes + ((clampedBytes * spanBytes) / totalBytes);
+    }
+
+    private static long CalculateProgressBytesForPercent(long totalBytes, int percent)
+    {
+        if (totalBytes <= 0)
+        {
+            return 0;
+        }
+
+        var clampedPercent = Math.Clamp(percent, 0, 100);
+        if (clampedPercent == 0)
+        {
+            return 0;
+        }
+
+        var scaled = (long)Math.Ceiling(totalBytes * (clampedPercent / 100d));
+        return Math.Clamp(scaled, 1L, totalBytes);
     }
 
     private static bool TryGetIsFolder(JsonElement data, out bool isFolder)
