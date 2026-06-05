@@ -25,6 +25,7 @@ public static class WfxNativeExports
     private const string InitLogPath = "c:\\temp\\wfx-init.log";
     private const string DefaultParamsLogPath = "c:\\temp\\wfx-default-params.log";
     private const string ProgressLogPath = "c:\\temp\\wfx-progress.log";
+    private const string ProgressEntryLogPath = "c:\\temp\\wfx-progress-entry.log";
     private const string StatusLogPath = "c:\\temp\\wfx-status.log";
     private const string ProgressSelfTestEnvVar = "TC_WFX_PROGRESS_SELFTEST";
     private static FsDefaultParamStruct? _defaultParams;
@@ -199,6 +200,9 @@ public static class WfxNativeExports
 
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
+        AppendDiagnosticLog(
+            ProgressLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} FsGetFileW thread={Thread.CurrentThread.ManagedThreadId} remote={remoteName} local={localName}");
 
         var effectiveCopyFlags = copyFlags;
         if ((effectiveCopyFlags & CopyFlagOverwrite) == 0 && File.Exists(localName))
@@ -218,10 +222,23 @@ public static class WfxNativeExports
             }
         }
 
-        var directProgress = CreateDirectProgressReporter("download", remoteName, localName);
-        directProgress?.Report(new WfxTransferProgress { Operation = "download", SourcePath = remoteName, DestinationPath = localName, BytesTransferred = 0, TotalBytes = null });
-        var result = EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags, directProgress);
-        return result;
+        var affinityProgress = CreateThreadAffinityProgressReporter("download", remoteName, localName);
+        if (affinityProgress is null)
+        {
+            return EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags, progress: null);
+        }
+
+        affinityProgress.Report(new WfxTransferProgress
+        {
+            Operation = "download",
+            SourcePath = remoteName,
+            DestinationPath = localName,
+            BytesTransferred = 0,
+            TotalBytes = null,
+        });
+
+        var transferTask = Task.Run(() => EntryPoints.Value.FsGetFile(remoteName, localName, effectiveCopyFlags, affinityProgress));
+        return ExecuteTransferWithThreadAffinity(affinityProgress, transferTask);
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsPutFileW")]
@@ -229,6 +246,9 @@ public static class WfxNativeExports
     {
         var localName = Marshal.PtrToStringUni(localNamePtr) ?? string.Empty;
         var remoteName = Marshal.PtrToStringUni(remoteNamePtr) ?? string.Empty;
+        AppendDiagnosticLog(
+            ProgressLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} FsPutFileW thread={Thread.CurrentThread.ManagedThreadId} local={localName} remote={remoteName}");
 
         var effectiveCopyFlags = copyFlags;
         if ((effectiveCopyFlags & CopyFlagOverwrite) == 0)
@@ -284,10 +304,40 @@ public static class WfxNativeExports
             return selfTestResult.Value;
         }
 
-        var directProgress = CreateDirectProgressReporter("upload", localName, remoteName);
-        directProgress?.Report(new WfxTransferProgress { Operation = "upload", SourcePath = localName, DestinationPath = remoteName, BytesTransferred = 0, TotalBytes = null });
-        var result = EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags, directProgress);
-        return result;
+        var affinityProgress = CreateThreadAffinityProgressReporter("upload", localName, remoteName);
+        if (affinityProgress is null)
+        {
+            return EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags, progress: null);
+        }
+
+        affinityProgress.Report(new WfxTransferProgress
+        {
+            Operation = "upload",
+            SourcePath = localName,
+            DestinationPath = remoteName,
+            BytesTransferred = 0,
+            TotalBytes = null,
+        });
+
+        var transferTask = Task.Run(() => EntryPoints.Value.FsPutFile(localName, remoteName, effectiveCopyFlags, affinityProgress));
+        return ExecuteTransferWithThreadAffinity(affinityProgress, transferTask);
+    }
+
+    private static int ExecuteTransferWithThreadAffinity(ThreadAffinityTcProgressReporter reporter, Task<int> transferTask)
+    {
+        while (true)
+        {
+            reporter.DrainPendingCallbacks();
+            if (transferTask.Wait(20))
+            {
+                break;
+            }
+        }
+
+        reporter.DrainPendingCallbacks();
+
+        var result = transferTask.GetAwaiter().GetResult();
+        return reporter.UserAborted ? WfxResultCodes.UserAbort : result;
     }
 
     private static void WriteFindData(nint destination, WfxFindData item)
@@ -362,7 +412,30 @@ public static class WfxNativeExports
         var client = new WfxBridgeClient(baseUrl);
         var facade = new WfxPluginFacade(client);
         var runtime = new WfxPluginRuntime(facade, authProvider);
+        runtime.TransferProgressChanged += OnTransferProgressChanged;
         return new WfxEntryPoints(runtime);
+    }
+
+    private static void OnTransferProgressChanged(WfxTransferProgress progress)
+    {
+        bool hasProgressProc;
+        int pluginNumber;
+        var threadId = Thread.CurrentThread.ManagedThreadId;
+        lock (CallbackSyncRoot)
+        {
+            hasProgressProc = _progressProc is not null;
+            pluginNumber = _pluginNumber;
+        }
+
+        lock (DiagnosticLogSyncRoot)
+        {
+            File.AppendAllText(
+                @"C:\temp\wfx-progress-entry.log",
+                $"{DateTime.Now:HH:mm:ss.fff} ENTER thread={threadId} {progress.Operation} {progress.BytesTransferred}/{progress.TotalBytes} {progress.SourcePath} -> {progress.DestinationPath}\r\n");
+            File.AppendAllText(
+                @"C:\temp\wfx-progress-entry-handler.log",
+                $"{DateTime.Now:HH:mm:ss.fff} EVENT thread={threadId} {progress.Operation} {progress.BytesTransferred}/{progress.TotalBytes} {progress.SourcePath} -> {progress.DestinationPath} progressProc={(hasProgressProc ? "set" : "null")} pluginNr={pluginNumber}\r\n");
+        }
     }
 
     private static IProgress<WfxTransferProgress>? CreateDirectProgressReporter(string operation, string sourcePath, string destinationPath)
@@ -384,6 +457,27 @@ public static class WfxNativeExports
         }
 
         return new DirectTcProgressReporter(operation, sourcePath, destinationPath, pluginNumber, progressProc);
+    }
+
+    private static ThreadAffinityTcProgressReporter? CreateThreadAffinityProgressReporter(string operation, string sourcePath, string destinationPath)
+    {
+        ProgressProcDelegate? progressProc;
+        int pluginNumber;
+        lock (CallbackSyncRoot)
+        {
+            progressProc = _progressProc;
+            pluginNumber = _pluginNumber;
+        }
+
+        if (progressProc is null)
+        {
+            AppendDiagnosticLog(
+                ProgressLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} {operation} progressProc=null source={sourcePath} target={destinationPath}");
+            return null;
+        }
+
+        return new ThreadAffinityTcProgressReporter(operation, sourcePath, destinationPath, pluginNumber, progressProc);
     }
 
     private static void NotifyTotalCommanderPathChanged(string path)
@@ -671,6 +765,8 @@ public static class WfxNativeExports
 
         public void Report(WfxTransferProgress value)
         {
+            AppendProgressEntryLog(value);
+
             var totalBytes = value.TotalBytes.GetValueOrDefault();
             var percent = totalBytes > 0
                 ? (int)Math.Clamp((value.BytesTransferred * 100L) / totalBytes, 0, 100)
@@ -719,19 +815,199 @@ public static class WfxNativeExports
 
         private void SendPercent(int percent, long bytesTransferred, long? totalBytes)
         {
+            var tcPercent = string.Equals(_operation, "upload", StringComparison.OrdinalIgnoreCase)
+                ? -percent
+                : percent;
+            var threadId = Thread.CurrentThread.ManagedThreadId;
+
             AppendDiagnosticLog(
                 ProgressLogPath,
-                $"{DateTime.Now:HH:mm:ss.fff} {_operation} {bytesTransferred}/{totalBytes} percent={percent} callback=before");
+                $"{DateTime.Now:HH:mm:ss.fff} {_operation} {bytesTransferred}/{totalBytes} percent={percent} tcPercent={tcPercent} thread={threadId} callback=before");
 
-            var callbackResult = _progressProc(_pluginNumber, _sourcePath, _destinationPath, percent);
+            var callbackResult = _progressProc(_pluginNumber, _sourcePath, _destinationPath, tcPercent);
 
             AppendDiagnosticLog(
                 ProgressLogPath,
-                $"{DateTime.Now:HH:mm:ss.fff} {_operation} {bytesTransferred}/{totalBytes} percent={percent} callback=result={callbackResult}");
+                $"{DateTime.Now:HH:mm:ss.fff} {_operation} {bytesTransferred}/{totalBytes} percent={percent} tcPercent={tcPercent} thread={threadId} callback=result={callbackResult}");
 
             if (callbackResult != 0)
             {
                 EntryPoints.Value.CancelCurrentTransfer();
+            }
+        }
+
+        private static void AppendProgressEntryLog(WfxTransferProgress progress)
+        {
+            try
+            {
+                lock (DiagnosticLogSyncRoot)
+                {
+                    Directory.CreateDirectory(DiagnosticLogDirectory);
+                    File.AppendAllText(
+                        ProgressEntryLogPath,
+                        $"{DateTime.Now:HH:mm:ss.fff} ENTER {progress.Operation} {progress.BytesTransferred}/{progress.TotalBytes} {progress.SourcePath} -> {progress.DestinationPath}\r\n");
+                }
+            }
+            catch
+            {
+                // Diagnostics must not affect plugin behavior.
+            }
+        }
+    }
+
+    private sealed class ThreadAffinityTcProgressReporter : IProgress<WfxTransferProgress>
+    {
+        private readonly string _operation;
+        private readonly string _sourcePath;
+        private readonly string _destinationPath;
+        private readonly int _pluginNumber;
+        private readonly ProgressProcDelegate _progressProc;
+        private readonly object _syncRoot = new();
+
+        private WfxTransferProgress _latest = new()
+        {
+            Operation = string.Empty,
+            SourcePath = string.Empty,
+            DestinationPath = string.Empty,
+        };
+        private long _latestVersion;
+        private long _processedVersion;
+        private int _lastPercent = -1;
+        private bool _uploadIntermediateSent;
+
+        public ThreadAffinityTcProgressReporter(
+            string operation,
+            string sourcePath,
+            string destinationPath,
+            int pluginNumber,
+            ProgressProcDelegate progressProc)
+        {
+            _operation = operation;
+            _sourcePath = sourcePath;
+            _destinationPath = destinationPath;
+            _pluginNumber = pluginNumber;
+            _progressProc = progressProc;
+        }
+
+        public bool UserAborted { get; private set; }
+
+        public void Report(WfxTransferProgress value)
+        {
+            AppendProgressEntryLog(value);
+
+            lock (_syncRoot)
+            {
+                _latest = value;
+                _latestVersion++;
+            }
+        }
+
+        public void DrainPendingCallbacks()
+        {
+            while (true)
+            {
+                WfxTransferProgress current;
+                lock (_syncRoot)
+                {
+                    if (_processedVersion == _latestVersion)
+                    {
+                        return;
+                    }
+
+                    current = _latest;
+                    _processedVersion = _latestVersion;
+                }
+
+                SendProgress(current);
+            }
+        }
+
+        private void SendProgress(WfxTransferProgress value)
+        {
+            var totalBytes = value.TotalBytes.GetValueOrDefault();
+            var percent = totalBytes > 0
+                ? (int)Math.Clamp((value.BytesTransferred * 100L) / totalBytes, 0, 100)
+                : 0;
+
+            if (_lastPercent < 0)
+            {
+                SendPercent(0, value.BytesTransferred, value.TotalBytes);
+                _lastPercent = 0;
+            }
+
+            if (_operation == "upload" && !_uploadIntermediateSent && percent >= 100)
+            {
+                const int intermediatePercent = 1;
+                if (_lastPercent < intermediatePercent)
+                {
+                    SendPercent(intermediatePercent, value.BytesTransferred, value.TotalBytes);
+                    _lastPercent = intermediatePercent;
+                }
+
+                _uploadIntermediateSent = true;
+            }
+
+            if (percent < _lastPercent)
+            {
+                percent = _lastPercent;
+            }
+
+            if (percent == _lastPercent)
+            {
+                AppendDiagnosticLog(
+                    ProgressLogPath,
+                    $"{DateTime.Now:HH:mm:ss.fff} {_operation} {value.BytesTransferred}/{value.TotalBytes} percent={percent} callback=skipped-same-percent");
+                return;
+            }
+
+            SendPercent(percent, value.BytesTransferred, value.TotalBytes);
+            _lastPercent = percent;
+
+            if (_operation == "upload" && percent > 0 && percent < 100)
+            {
+                _uploadIntermediateSent = true;
+            }
+        }
+
+        private void SendPercent(int percent, long bytesTransferred, long? totalBytes)
+        {
+            var tcPercent = string.Equals(_operation, "upload", StringComparison.OrdinalIgnoreCase)
+                ? -percent
+                : percent;
+            var threadId = Thread.CurrentThread.ManagedThreadId;
+
+            AppendDiagnosticLog(
+                ProgressLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} {_operation} {bytesTransferred}/{totalBytes} percent={percent} tcPercent={tcPercent} thread={threadId} callback=before");
+
+            var callbackResult = _progressProc(_pluginNumber, _sourcePath, _destinationPath, tcPercent);
+
+            AppendDiagnosticLog(
+                ProgressLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} {_operation} {bytesTransferred}/{totalBytes} percent={percent} tcPercent={tcPercent} thread={threadId} callback=result={callbackResult}");
+
+            if (callbackResult != 0)
+            {
+                UserAborted = true;
+                EntryPoints.Value.CancelCurrentTransfer();
+            }
+        }
+
+        private static void AppendProgressEntryLog(WfxTransferProgress progress)
+        {
+            try
+            {
+                lock (DiagnosticLogSyncRoot)
+                {
+                    Directory.CreateDirectory(DiagnosticLogDirectory);
+                    File.AppendAllText(
+                        ProgressEntryLogPath,
+                        $"{DateTime.Now:HH:mm:ss.fff} ENTER {progress.Operation} {progress.BytesTransferred}/{progress.TotalBytes} {progress.SourcePath} -> {progress.DestinationPath}\r\n");
+                }
+            }
+            catch
+            {
+                // Diagnostics must not affect plugin behavior.
             }
         }
     }
