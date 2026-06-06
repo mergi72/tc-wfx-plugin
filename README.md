@@ -1,9 +1,18 @@
 # tc-wfx-plugin
 
 [![Status](https://img.shields.io/badge/Status-Alpha-orange)](https://github.com/mergi72/tc-wfx-plugin)
-[![Version](https://img.shields.io/badge/Version-v0.1.0--alpha-blue)](https://github.com/mergi72/tc-wfx-plugin)
+[![Plugin Version](https://img.shields.io/badge/Plugin-v0.2.0-blue)](https://github.com/mergi72/tc-wfx-plugin)
+[![Installer Release](https://img.shields.io/badge/Installer-v0.2.2--alpha-blueviolet)](https://github.com/mergi72/dms-provider-installer/releases/tag/v0.2.2-alpha)
+
+Current development branch: `develop`  
+Stable release branch: `main`
 
 Separated C# repository for the Total Commander WFX plugin that integrates with `dms-provider-bridge`.
+
+Current release mapping:
+
+- Plugin repository latest changelog version: `0.2.0`
+- Latest installer release that bundles bridge + plugin: `v0.2.2-alpha`
 
 ## Related Projects
 
