@@ -4,7 +4,7 @@
     "timeoutSeconds": 900
   },
   "progress": {
-    "steps": 10
+    "steps": 100
   },
   "logging": {
     "enabled": true,

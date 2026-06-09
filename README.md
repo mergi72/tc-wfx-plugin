@@ -1,7 +1,7 @@
 # tc-wfx-plugin
 
 [![Status](https://img.shields.io/badge/Status-Alpha-orange)](https://github.com/mergi72/tc-wfx-plugin)
-[![Plugin Version](https://img.shields.io/badge/Plugin-v0.2.0-blue)](https://github.com/mergi72/tc-wfx-plugin)
+[![Plugin Version](https://img.shields.io/badge/Plugin-v0.2.1-blue)](https://github.com/mergi72/tc-wfx-plugin)
 [![Installer Release](https://img.shields.io/badge/Installer-v0.2.2--alpha-blueviolet)](https://github.com/mergi72/dms-provider-installer/releases/tag/v0.2.2-alpha)
 
 Current development branch: `develop`  
@@ -11,7 +11,7 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 
 Current release mapping:
 
-- Plugin repository latest changelog version: `0.2.0`
+- Plugin repository latest changelog version: `0.2.1`
 - Latest installer release that bundles bridge + plugin: `v0.2.2-alpha`
 
 ## Related Projects
@@ -44,7 +44,7 @@ This alpha milestone does not yet include full eDoCat branch enablement.
 
 ## Release Notes
 
-- See `CHANGELOG.md` for release history and `v0.2.0` notes.
+- See `CHANGELOG.md` for release history and `v0.2.1` notes.
 - For first external testing scope, see `RELEASE_NOTES_v0.1.0-alpha.md`.
 
 ## License

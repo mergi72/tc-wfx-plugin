@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2026-06-09
+
+### Added
+
+- Credential broker client integration for resolving user credentials outside the bridge service process.
+- Runtime config support for progress/logging diagnostics used while testing Total Commander transfers.
+- Progress diagnostics consolidated into `progress-debug.log` for local troubleshooting.
+
+### Changed
+
+- Download progress reporting now uses normalized Total Commander paths and raw streamed byte progress from the bridge.
+- Transfer progress callback pumping is throttled to avoid flooding the Total Commander progress dialog.
+- Upload progress keeps a heartbeat while the bridge call is active.
+
 ## [0.2.0] - 2026-06-02
 
 ### Added

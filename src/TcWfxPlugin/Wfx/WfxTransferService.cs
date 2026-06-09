@@ -146,9 +146,11 @@ internal sealed class WfxTransferService
             totalBytes: expectedSize);
 
         operation.Report(0);
-        ReportDownloadStage(operation, expectedSize, 1);
+        ReportProgressStage(operation, expectedSize, 1);
+        var rawDownloadHeartbeat = new TransferProgressHeartbeat(operation, expectedSize, startPercent: 2, endPercent: 90, intervalMs: 1000);
 
-        var rawDownload = await _facade.DownloadRawAsync(sourceProviderPath, _authProvider.GetAuthContext(), cancellationToken);
+        var rawDownloadTask = _facade.DownloadRawAsync(sourceProviderPath, _authProvider.GetAuthContext(), cancellationToken);
+        var rawDownload = await rawDownloadHeartbeat.AwaitAsync(rawDownloadTask, cancellationToken);
         if (rawDownload is not null)
         {
             if (!rawDownload.Ok || rawDownload.Session is null)
@@ -167,7 +169,6 @@ internal sealed class WfxTransferService
                 var totalBytes = rawDownload.Session.ContentLength ?? expectedSize;
                 var rawBytesTransferred = 0L;
                 operation.SetTotalBytes(totalBytes);
-                ReportDownloadStage(operation, totalBytes, 5);
 
                 var buffer = new byte[IoChunkSize];
                 await using (var output = new FileStream(localTargetPath, FileMode.Create, FileAccess.Write, FileShare.None, IoChunkSize, useAsync: true))
@@ -184,15 +185,7 @@ internal sealed class WfxTransferService
 
                         await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                         rawBytesTransferred += read;
-
-                        if (totalBytes is > 0)
-                        {
-                            operation.Report(MapDownloadReadToDisplayBytes(rawBytesTransferred, totalBytes.Value));
-                        }
-                        else
-                        {
-                            operation.Report(rawBytesTransferred);
-                        }
+                        operation.Report(rawBytesTransferred);
                     }
                 }
 
@@ -231,7 +224,7 @@ internal sealed class WfxTransferService
 
         var bytesTransferred = 0L;
         operation.SetTotalBytes(rawContent.LongLength);
-        ReportDownloadStage(operation, rawContent.LongLength, 5);
+        ReportProgressStage(operation, rawContent.LongLength, 5);
 
         await using (var output = new FileStream(localTargetPath, FileMode.Create, FileAccess.Write, FileShare.None, IoChunkSize, useAsync: true))
         {
@@ -307,6 +300,7 @@ internal sealed class WfxTransferService
             destinationPath: totalCommanderDestinationPath,
             totalBytes: totalBytes);
         operation.Report(0);
+        var uploadHeartbeat = new TransferProgressHeartbeat(operation, totalBytes, startPercent: 1, endPercent: 99);
 
         IProgress<long>? uploadProgress = null;
         if (progress is not null)
@@ -315,11 +309,18 @@ internal sealed class WfxTransferService
             {
                 var normalizedBytes = Math.Clamp(bytesTransferred, 0, totalBytes);
                 Interlocked.Exchange(ref reportedUploadBytes, normalizedBytes);
-                operation.Report(normalizedBytes);
+                var displayBytes = MapUploadReadToDisplayBytes(normalizedBytes, totalBytes);
+                var displayPercent = CalculateProgressPercent(displayBytes, totalBytes);
+                if (displayPercent >= uploadHeartbeat.LastReportedPercent)
+                {
+                    operation.Report(displayBytes);
+                }
+
+                uploadHeartbeat.AdvanceToAtLeast(displayPercent + 1);
             });
         }
 
-        var response = await _facade.UploadRawAsync(
+        var uploadTask = _facade.UploadRawAsync(
             uploadDestinationProviderPath,
             fileName,
             auth,
@@ -327,6 +328,7 @@ internal sealed class WfxTransferService
             overwrite,
             uploadProgress,
             cancellationToken);
+        var response = await uploadHeartbeat.AwaitAsync(uploadTask, cancellationToken);
 
         var finalBytesTransferred = response.Ok
             ? totalBytes
@@ -335,6 +337,60 @@ internal sealed class WfxTransferService
         operation.Finish(response.Ok, finalBytesTransferred);
 
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
+    }
+
+    private sealed class TransferProgressHeartbeat
+    {
+        private readonly IWfxProgressReporter _operation;
+        private readonly long? _totalBytes;
+        private readonly int _maxPercent;
+        private readonly int _intervalMs;
+        private int _nextPercent;
+        private int _lastReportedPercent;
+
+        public TransferProgressHeartbeat(IWfxProgressReporter operation, long? totalBytes, int startPercent, int endPercent, int intervalMs = 250)
+        {
+            _operation = operation;
+            _totalBytes = totalBytes;
+            _nextPercent = Math.Clamp(startPercent, 0, 100);
+            _maxPercent = Math.Clamp(endPercent, _nextPercent, 100);
+            _intervalMs = Math.Max(100, intervalMs);
+        }
+
+        public int NextPercent => _nextPercent;
+
+        public int LastReportedPercent => _lastReportedPercent;
+
+        public async Task<T> AwaitAsync<T>(Task<T> task, CancellationToken cancellationToken)
+        {
+            while (!task.IsCompleted)
+            {
+                ReportNext();
+
+                var completed = await Task.WhenAny(task, Task.Delay(_intervalMs, cancellationToken));
+                if (ReferenceEquals(completed, task))
+                {
+                    break;
+                }
+            }
+
+            return await task;
+        }
+
+        public void AdvanceToAtLeast(int percent)
+        {
+            _nextPercent = Math.Clamp(Math.Max(_nextPercent, percent), 0, _maxPercent);
+        }
+
+        private void ReportNext()
+        {
+            _lastReportedPercent = _nextPercent;
+            ReportProgressStage(_operation, _totalBytes, _nextPercent);
+            if (_nextPercent < _maxPercent)
+            {
+                _nextPercent++;
+            }
+        }
     }
 
     private static void ResolveUploadTarget(
@@ -407,7 +463,7 @@ internal sealed class WfxTransferService
         return null;
     }
 
-    private static void ReportDownloadStage(IWfxProgressReporter operation, long? totalBytes, int percent)
+    private static void ReportProgressStage(IWfxProgressReporter operation, long? totalBytes, int percent)
     {
         if (percent <= 0)
         {
@@ -434,7 +490,7 @@ internal sealed class WfxTransferService
 
         var clampedBytes = Math.Clamp(bytesTransferred, 0L, totalBytes);
         var startBytes = CalculateProgressBytesForPercent(totalBytes, 5);
-        var endBytes = CalculateProgressBytesForPercent(totalBytes, 95);
+        var endBytes = CalculateProgressBytesForPercent(totalBytes, 99);
         var spanBytes = Math.Max(0L, endBytes - startBytes);
 
         if (spanBytes == 0)
@@ -443,6 +499,35 @@ internal sealed class WfxTransferService
         }
 
         return startBytes + ((clampedBytes * spanBytes) / totalBytes);
+    }
+
+    private static long MapUploadReadToDisplayBytes(long bytesTransferred, long totalBytes)
+    {
+        if (totalBytes <= 0)
+        {
+            return bytesTransferred;
+        }
+
+        var clampedBytes = Math.Clamp(bytesTransferred, 0L, totalBytes);
+        var endBytes = CalculateProgressBytesForPercent(totalBytes, 90);
+        if (endBytes <= 0)
+        {
+            return 0;
+        }
+
+        return (clampedBytes * endBytes) / totalBytes;
+    }
+
+
+    private static int CalculateProgressPercent(long bytesTransferred, long totalBytes)
+    {
+        if (totalBytes <= 0)
+        {
+            return 0;
+        }
+
+        var clampedBytes = Math.Clamp(bytesTransferred, 0L, totalBytes);
+        return (int)Math.Clamp((clampedBytes * 100L) / totalBytes, 0L, 100L);
     }
 
     private static long CalculateProgressBytesForPercent(long totalBytes, int percent)
@@ -540,3 +625,4 @@ internal sealed class WfxTransferService
         }
     }
 }
+

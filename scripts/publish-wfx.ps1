@@ -25,10 +25,14 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (Test-Path $configTemplatePath) {
+    $outputRootConfigPath = Join-Path $outputPath "config.json"
+    Copy-Item -Path $configTemplatePath -Destination $outputRootConfigPath -Force
+    Write-Host "Copied runtime config template to: $outputRootConfigPath"
+
     $outputConfigDir = Join-Path $outputPath "config"
     New-Item -ItemType Directory -Path $outputConfigDir -Force | Out-Null
     Copy-Item -Path $configTemplatePath -Destination (Join-Path $outputConfigDir "config.json") -Force
-    Write-Host "Copied runtime config template to: $outputConfigDir\\config.json"
+    Write-Host "Copied runtime config template to: $outputConfigDir\config.json"
 }
 
 Write-Host "Publish completed successfully."
