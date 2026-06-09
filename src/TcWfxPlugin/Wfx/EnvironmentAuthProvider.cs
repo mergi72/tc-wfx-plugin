@@ -4,7 +4,7 @@ namespace TcWfxPlugin.Wfx;
 
 public sealed class EnvironmentAuthProvider : IWfxAuthProvider
 {
-    public BridgeAuthContext GetAuthContext()
+    public BridgeAuthContext GetAuthContext(string? provider = null)
     {
         var mode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE") ?? "winuser";
 
@@ -31,3 +31,4 @@ public sealed class EnvironmentAuthProvider : IWfxAuthProvider
     {
     }
 }
+

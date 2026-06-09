@@ -569,14 +569,14 @@ public sealed class WfxServicesTests
         var client = new FakeBridgeClient
         {
             UploadResponse = JsonResponse(true, "{}"),
-            UploadProgressOffsets = [2, 5],
+            UploadProgressOffsets = [50, 100],
         };
 
         var runtime = CreateRuntime(client);
         var progressEvents = new List<WfxTransferProgress>();
         runtime.TransferProgressChanged += progress => progressEvents.Add(progress);
         var source = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.txt");
-        await File.WriteAllTextAsync(source, "hello");
+        await File.WriteAllTextAsync(source, new string('x', 100));
 
         try
         {
@@ -590,8 +590,9 @@ public sealed class WfxServicesTests
             Assert.Equal(WfxResultCodes.Success, result);
             Assert.NotEmpty(progressEvents);
             Assert.Contains(progressEvents, evt => evt.Operation == "upload" && evt.BytesTransferred == 0 && evt.IsCompleted == false);
-            Assert.Contains(progressEvents, evt => evt.Operation == "upload" && evt.BytesTransferred == 2 && evt.IsCompleted == false);
-            Assert.Contains(progressEvents, evt => evt.Operation == "upload" && evt.BytesTransferred == 5 && evt.IsCompleted == true);
+            Assert.Contains(progressEvents, evt => evt.Operation == "upload" && evt.BytesTransferred == 45 && evt.IsCompleted == false);
+            Assert.Contains(progressEvents, evt => evt.Operation == "upload" && evt.BytesTransferred == 90 && evt.IsCompleted == false);
+            Assert.Contains(progressEvents, evt => evt.Operation == "upload" && evt.BytesTransferred == 100 && evt.IsCompleted == true);
         }
         finally
         {
@@ -921,7 +922,7 @@ public sealed class WfxServicesTests
             _second = second;
         }
 
-        public BridgeAuthContext GetAuthContext()
+        public BridgeAuthContext GetAuthContext(string? provider = null)
         {
             return _useSecond ? _second : _first;
         }

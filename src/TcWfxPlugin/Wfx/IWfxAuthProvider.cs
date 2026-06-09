@@ -4,6 +4,6 @@ namespace TcWfxPlugin.Wfx;
 
 public interface IWfxAuthProvider
 {
-    BridgeAuthContext GetAuthContext();
+    BridgeAuthContext GetAuthContext(string? provider = null);
     void ResetCachedAuth();
 }

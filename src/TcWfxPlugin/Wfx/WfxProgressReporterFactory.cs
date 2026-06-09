@@ -31,6 +31,7 @@ public sealed class WfxProgressReporterFactory : IWfxProgressReporterFactory
         private readonly string _destinationPath;
         private long? _totalBytes;
         private long _lastBytes;
+        private int? _lastReportedPercent;
         private bool _completed;
 
         public WfxProgressReporter(
@@ -106,6 +107,17 @@ public sealed class WfxProgressReporterFactory : IWfxProgressReporterFactory
 
         private void Emit(bool isCompleted)
         {
+            if (!isCompleted && _totalBytes is > 0)
+            {
+                var percent = CalculateProgressPercent(_lastBytes, _totalBytes.Value);
+                if (_lastReportedPercent == percent)
+                {
+                    return;
+                }
+
+                _lastReportedPercent = percent;
+            }
+
             _progress?.Report(new WfxTransferProgress
             {
                 Operation = _operation,
@@ -115,6 +127,17 @@ public sealed class WfxProgressReporterFactory : IWfxProgressReporterFactory
                 TotalBytes = _totalBytes,
                 IsCompleted = isCompleted,
             });
+        }
+
+        private static int CalculateProgressPercent(long bytesTransferred, long totalBytes)
+        {
+            if (totalBytes <= 0)
+            {
+                return 0;
+            }
+
+            var clampedBytes = Math.Clamp(bytesTransferred, 0L, totalBytes);
+            return (int)Math.Clamp((clampedBytes * 100L) / totalBytes, 0L, 100L);
         }
     }
 }

@@ -8,6 +8,9 @@ namespace TcWfxPlugin.Contracts;
     PropertyNameCaseInsensitive = true,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(BridgeAuthContext))]
+[JsonSerializable(typeof(CredentialBrokerAuthRequirement))]
+[JsonSerializable(typeof(CredentialBrokerRequest))]
+[JsonSerializable(typeof(CredentialBrokerResponse))]
 [JsonSerializable(typeof(WfxPathRequest))]
 [JsonSerializable(typeof(WfxMoveRequest))]
 [JsonSerializable(typeof(WfxUploadRequest))]
@@ -22,3 +25,4 @@ namespace TcWfxPlugin.Contracts;
 internal sealed partial class BridgeJsonSerializerContext : JsonSerializerContext
 {
 }
+

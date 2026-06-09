@@ -71,6 +71,39 @@ public sealed class WfxRuntimeConfigTests
     }
 
     [Fact]
+    public void Load_WhenConfigDirEnvironmentIsSet_UsesThatDirectoryBeforeBaseDirectory()
+    {
+        using var processBase = new TempDirectory();
+        using var configWorkspace = new TempDirectory();
+        var configPath = Path.Combine(configWorkspace.Path, "config.json");
+
+        var json = """
+            {
+              "progress": {
+                "steps": 33
+              },
+              "logging": {
+                "enabled": true,
+                "path": "repo-logs"
+              }
+            }
+            """;
+
+        File.WriteAllText(configPath, json);
+
+        using var env = new ScopedEnvironmentVariables(new Dictionary<string, string?>
+        {
+            ["TC_WFX_CONFIG_DIR"] = configWorkspace.Path,
+            ["TC_WFX_LOG_DIR"] = null,
+        });
+
+        var runtimeConfig = WfxRuntimeConfig.Load(processBase.Path);
+
+        Assert.Equal(33, runtimeConfig.ProgressSteps);
+        Assert.True(runtimeConfig.LoggingEnabled);
+        Assert.Equal(Path.Combine(configWorkspace.Path, "repo-logs"), runtimeConfig.LogDirectoryPath);
+    }
+    [Fact]
     public void Load_WhenNestedConfigExists_UsesNestedConfigLocation()
     {
         using var workspace = new TempDirectory();
