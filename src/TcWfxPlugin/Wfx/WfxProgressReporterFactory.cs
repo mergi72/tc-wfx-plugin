@@ -53,6 +53,24 @@ public sealed class WfxProgressReporterFactory : IWfxProgressReporterFactory
             _totalBytes = totalBytes;
         }
 
+        public void ReportDiagnostic(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            _progress?.Report(new WfxTransferProgress
+            {
+                Operation = $"{_operation}:diagnostic:{message}",
+                SourcePath = _sourcePath,
+                DestinationPath = _destinationPath,
+                BytesTransferred = _lastBytes,
+                TotalBytes = _totalBytes,
+                IsCompleted = false,
+            });
+        }
+
         public void Report(long bytesTransferred)
         {
             if (_completed)

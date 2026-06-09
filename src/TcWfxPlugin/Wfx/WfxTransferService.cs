@@ -166,7 +166,10 @@ internal sealed class WfxTransferService
                     Directory.CreateDirectory(rawTargetDirectory);
                 }
 
-                var totalBytes = rawDownload.Session.ContentLength ?? expectedSize;
+                var contentLength = rawDownload.Session.ContentLength;
+                var totalBytes = contentLength ?? expectedSize;
+                operation.ReportDiagnostic(
+                    $"download_size contentLength={contentLength?.ToString() ?? "null"} expectedSize={expectedSize?.ToString() ?? "null"} totalBytes={totalBytes?.ToString() ?? "null"} source={(contentLength.HasValue ? "content-length" : expectedSize.HasValue ? "stat" : "unknown")}");
                 var rawBytesTransferred = 0L;
                 operation.SetTotalBytes(totalBytes);
 

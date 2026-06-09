@@ -839,6 +839,10 @@ public static class WfxNativeExports
         public void Report(WfxTransferProgress value)
         {
             AppendProgressEntryLog(value);
+            if (TryAppendProgressDiagnostic(value))
+            {
+                return;
+            }
 
             var rawPercent = CalculateProgressPercent(value.BytesTransferred, value.TotalBytes);
             var steppedPercent = _steps.Next(rawPercent);
@@ -942,6 +946,10 @@ public static class WfxNativeExports
         public void Report(WfxTransferProgress value)
         {
             AppendProgressEntryLog(value);
+            if (TryAppendProgressDiagnostic(value))
+            {
+                return;
+            }
 
             lock (_syncRoot)
             {
@@ -1080,6 +1088,23 @@ public static class WfxNativeExports
             _lastStep = step;
             return (step * 100) / _steps;
         }
+    }
+
+    private static bool TryAppendProgressDiagnostic(WfxTransferProgress progress)
+    {
+        const string marker = ":diagnostic:";
+        var markerIndex = progress.Operation.IndexOf(marker, StringComparison.Ordinal);
+        if (markerIndex < 0)
+        {
+            return false;
+        }
+
+        var operation = progress.Operation[..markerIndex];
+        var message = progress.Operation[(markerIndex + marker.Length)..];
+        AppendDiagnosticLog(
+            ProgressLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} {operation} diagnostic {message} source={progress.SourcePath} target={progress.DestinationPath}");
+        return true;
     }
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Unicode)]

@@ -7,7 +7,7 @@ internal sealed class WfxRuntimeConfig
 {
     private const string DefaultBridgeUrl = "http://127.0.0.1:8765/";
     private const int DefaultBridgeTimeoutSeconds = 900;
-    private const int DefaultProgressSteps = 10;
+    private const int DefaultProgressSteps = 100;
     private const string DefaultLogDirectoryName = "logs";
 
     private const string BridgeUrlEnvVar = "TC_WFX_BRIDGE_URL";
