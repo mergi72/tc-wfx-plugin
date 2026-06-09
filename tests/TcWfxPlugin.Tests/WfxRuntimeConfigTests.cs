@@ -71,6 +71,21 @@ public sealed class WfxRuntimeConfigTests
     }
 
     [Fact]
+    public void Load_WhenConfigAndEnvironmentMissing_UsesSmoothProgressDefault()
+    {
+        using var workspace = new TempDirectory();
+
+        using var env = new ScopedEnvironmentVariables(new Dictionary<string, string?>
+        {
+            ["TC_WFX_PROGRESS_STEPS"] = null,
+        });
+
+        var runtimeConfig = WfxRuntimeConfig.Load(workspace.Path);
+
+        Assert.Equal(100, runtimeConfig.ProgressSteps);
+    }
+
+    [Fact]
     public void Load_WhenConfigDirEnvironmentIsSet_UsesThatDirectoryBeforeBaseDirectory()
     {
         using var processBase = new TempDirectory();

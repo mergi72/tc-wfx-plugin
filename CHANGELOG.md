@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2] - 2026-06-09
+
+### Added
+
+- Download progress diagnostics now log whether transfer size came from HTTP `ContentLength`, bridge stat, or unknown-size fallback.
+
+### Changed
+
+- Default progress step filtering increased to 100 steps so transfers stay smooth even without runtime config.
+
 ## [0.2.1] - 2026-06-09
 
 ### Added
