@@ -281,6 +281,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         BridgeAuthContext auth,
         string? contentBase64,
         bool overwrite,
+        WfxUploadVersioning? versioning = null,
         CancellationToken cancellationToken = default)
     {
         return PostAsync(
@@ -292,6 +293,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
                 Auth = auth,
                 ContentBase64 = contentBase64,
                 Overwrite = overwrite,
+                Versioning = versioning,
             },
             SerializerContext.WfxUploadRequest,
             SerializerContext.WfxResponseJsonElement,
@@ -304,6 +306,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         BridgeAuthContext auth,
         string sourcePath,
         bool overwrite,
+        WfxUploadVersioning? versioning = null,
         CancellationToken cancellationToken = default)
     {
         return PostAsync(
@@ -315,6 +318,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
                 Auth = auth,
                 SourcePath = sourcePath,
                 Overwrite = overwrite,
+                Versioning = versioning,
             },
             SerializerContext.WfxUploadRequest,
             SerializerContext.WfxResponseJsonElement,
@@ -327,6 +331,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         BridgeAuthContext auth,
         string sourcePath,
         bool overwrite,
+        WfxUploadVersioning? versioning = null,
         IProgress<long>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -350,6 +355,10 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         form.Add(new StringContent(fileName), "file_name");
         form.Add(new StringContent(overwrite ? "true" : "false"), "overwrite");
         form.Add(new StringContent(JsonSerializer.Serialize(auth, SerializerContext.BridgeAuthContext)), "auth_json");
+        if (versioning is not null)
+        {
+            form.Add(new StringContent(JsonSerializer.Serialize(versioning, SerializerContext.WfxUploadVersioning)), "versioning_json");
+        }
 
         using var fileContent = new StreamContent(uploadStream, UploadBufferSizeBytes);
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");

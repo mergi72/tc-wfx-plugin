@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Threading;
 using System.Diagnostics;
+using TcWfxPlugin.Core;
 
 namespace TcWfxPlugin.Wfx;
 
@@ -283,7 +284,11 @@ public static class WfxNativeExports
         {
             if (EntryPoints.Value.FsPathExists(remoteName))
             {
-                if (TryConfirmOverwrite(remoteName))
+                if (IsVersionedProviderPath(remoteName))
+                {
+                    effectiveCopyFlags |= CopyFlagOverwrite;
+                }
+                else if (TryConfirmOverwrite(remoteName))
                 {
                     effectiveCopyFlags |= CopyFlagOverwrite;
                 }
@@ -309,7 +314,11 @@ public static class WfxNativeExports
                     var remoteFilePath = CombinePath(remoteName, fileName);
                     if ((effectiveCopyFlags & CopyFlagOverwrite) == 0 && EntryPoints.Value.FsPathExists(remoteFilePath))
                     {
-                        if (TryConfirmOverwrite(remoteFilePath))
+                        if (IsVersionedProviderPath(remoteFilePath))
+                        {
+                            effectiveCopyFlags |= CopyFlagOverwrite;
+                        }
+                        else if (TryConfirmOverwrite(remoteFilePath))
                         {
                             effectiveCopyFlags |= CopyFlagOverwrite;
                         }
@@ -464,7 +473,8 @@ public static class WfxNativeExports
             new HttpCredentialBrokerClient());
         var client = new WfxBridgeClient(baseUrl, RuntimeConfig.BridgeTimeout);
         var facade = new WfxPluginFacade(client);
-        var runtime = new WfxPluginRuntime(facade, authProvider);
+        var versioningProvider = new TcDialogVersioningDecisionProvider(TryConfirmYesNo);
+        var runtime = new WfxPluginRuntime(facade, authProvider, versioningDecisionProvider: versioningProvider);
         runtime.TransferProgressChanged += OnTransferProgressChanged;
         return new WfxEntryPoints(runtime);
     }
@@ -779,6 +789,13 @@ public static class WfxNativeExports
         var slashIndex = Math.Max(normalized.LastIndexOf('\\'), normalized.LastIndexOf('/'));
         var currentLeaf = slashIndex >= 0 ? normalized[(slashIndex + 1)..] : normalized;
         return string.Equals(currentLeaf, leafName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsVersionedProviderPath(string path)
+    {
+        return TotalCommanderPathMapper.TryToProviderPath(path, out var providerPath)
+            && ProviderPath.TryParse(providerPath, out var parsed)
+            && string.Equals(parsed.Provider, "alfresco", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void AppendDiagnosticLog(string filePath, string line)
