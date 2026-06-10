@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.3] - 2026-06-10
+
+### Added
+
+- Alfresco existing-document upload flow now asks for a new version choice instead of treating DMS updates as filesystem overwrite.
+- Version choice dialog shows the current version and calculated next major/minor targets, for example `Yes = 2.0` and `No = 1.5`.
+- Upload requests can send bridge `versioning` data with Alfresco-compatible `majorVersion` through both JSON and raw multipart upload paths.
+
+### Changed
+
+- Alfresco upload skips the old overwrite confirmation and lets the bridge return `version_required`, then retries with the selected major/minor version.
+
 ## [0.2.2] - 2026-06-09
 
 ### Added

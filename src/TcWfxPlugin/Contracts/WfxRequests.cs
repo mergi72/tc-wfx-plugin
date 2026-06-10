@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace TcWfxPlugin.Contracts;
 
 public sealed class WfxPathRequest
@@ -21,6 +23,17 @@ public sealed class WfxUploadRequest
     public string? ContentBase64 { get; init; }
     public string? SourcePath { get; init; }
     public bool Overwrite { get; init; }
+    public WfxUploadVersioning? Versioning { get; init; }
+}
+
+public sealed class WfxUploadVersioning
+{
+    public string Mode { get; init; } = "version";
+
+    [JsonPropertyName("majorVersion")]
+    public bool MajorVersion { get; init; }
+
+    public string? Comment { get; init; }
 }
 
 public sealed class WfxShareUrlRequest
@@ -42,4 +55,5 @@ public sealed class WfxShareUrlBrowseRequest
     public string? FileName { get; init; }
     public string? ContentBase64 { get; init; }
     public bool Overwrite { get; init; }
+    public WfxUploadVersioning? Versioning { get; init; }
 }

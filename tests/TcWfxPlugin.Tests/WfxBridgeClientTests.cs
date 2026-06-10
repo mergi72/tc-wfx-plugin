@@ -184,6 +184,48 @@ public sealed class WfxBridgeClientTests
         }
     }
 
+    [Fact]
+    public async Task UploadRawAsync_WhenVersioningProvided_SendsVersioningJsonWithMajorVersion()
+    {
+        var handler = new CapturingUploadHttpMessageHandler(
+            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"status\":\"ok\",\"service\":\"dms-provider-bridge\",\"version\":\"0.4.7\"}"),
+            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"ok\":true,\"error_code\":0,\"message\":\"\",\"data\":null}"));
+
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://127.0.0.1:8765/"),
+        };
+
+        var client = new WfxBridgeClient(httpClient);
+        var tempFile = Path.GetTempFileName();
+        await File.WriteAllTextAsync(tempFile, "payload");
+
+        try
+        {
+            var result = await client.UploadRawAsync(
+                "alfresco:/contracts",
+                "upload.txt",
+                new BridgeAuthContext { Mode = "credentials", Username = "user", Password = "pass" },
+                tempFile,
+                overwrite: false,
+                versioning: new WfxUploadVersioning
+                {
+                    Mode = "version",
+                    MajorVersion = true,
+                    Comment = "TC upload",
+                });
+
+            Assert.True(result.Ok);
+            Assert.NotNull(handler.LastVersioningJson);
+            Assert.Contains("\"majorVersion\":true", handler.LastVersioningJson, StringComparison.Ordinal);
+            Assert.DoesNotContain("major_version", handler.LastVersioningJson, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(tempFile);
+        }
+    }
+
     private static HttpResponseMessage HttpResponseMessageForJson(HttpStatusCode statusCode, string json)
     {
         return new HttpResponseMessage(statusCode)
@@ -270,6 +312,48 @@ public sealed class WfxBridgeClientTests
             if (request.RequestUri?.AbsolutePath.EndsWith("/bridge/wfx/upload-raw", StringComparison.Ordinal) == true && request.Content is not null)
             {
                 _ = await request.Content.ReadAsByteArrayAsync(cancellationToken);
+            }
+
+            var response = _responses.Dequeue();
+            response.RequestMessage = request;
+            if (response.Content is not null && response.Content.Headers.ContentType is null)
+            {
+                response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            }
+
+            return response;
+        }
+    }
+
+    private sealed class CapturingUploadHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Queue<HttpResponseMessage> _responses;
+
+        public CapturingUploadHttpMessageHandler(params HttpResponseMessage[] responses)
+        {
+            _responses = new Queue<HttpResponseMessage>(responses);
+        }
+
+        public string? LastVersioningJson { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (_responses.Count == 0)
+            {
+                throw new InvalidOperationException($"No queued response for request {request.Method} {request.RequestUri}.");
+            }
+
+            if (request.RequestUri?.AbsolutePath.EndsWith("/bridge/wfx/upload-raw", StringComparison.Ordinal) == true
+                && request.Content is MultipartFormDataContent form)
+            {
+                foreach (var part in form)
+                {
+                    var name = part.Headers.ContentDisposition?.Name?.Trim('"');
+                    if (string.Equals(name, "versioning_json", StringComparison.Ordinal))
+                    {
+                        LastVersioningJson = await part.ReadAsStringAsync(cancellationToken);
+                    }
+                }
             }
 
             var response = _responses.Dequeue();

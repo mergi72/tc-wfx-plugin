@@ -136,6 +136,7 @@ public sealed class WfxPluginFacade
         BridgeAuthContext auth,
         string contentBase64,
         bool overwrite,
+        WfxUploadVersioning? versioning = null,
         CancellationToken cancellationToken = default)
     {
         if (!ProviderPath.TryParse(destination, out _))
@@ -148,7 +149,7 @@ public sealed class WfxPluginFacade
             return Task.FromResult(WfxResponse<JsonElement>.Failed("File name is required for upload."));
         }
 
-        return _bridgeClient.UploadAsync(destination, fileName, auth, contentBase64, overwrite, cancellationToken);
+        return _bridgeClient.UploadAsync(destination, fileName, auth, contentBase64, overwrite, versioning, cancellationToken);
     }
 
     public Task<WfxResponse<JsonElement>> UploadFromSourceAsync(
@@ -157,6 +158,7 @@ public sealed class WfxPluginFacade
         BridgeAuthContext auth,
         string sourcePath,
         bool overwrite,
+        WfxUploadVersioning? versioning = null,
         CancellationToken cancellationToken = default)
     {
         if (!ProviderPath.TryParse(destination, out _))
@@ -174,7 +176,7 @@ public sealed class WfxPluginFacade
             return Task.FromResult(WfxResponse<JsonElement>.Failed("Source path is required for upload."));
         }
 
-        return _bridgeClient.UploadFromSourceAsync(destination, fileName, auth, sourcePath, overwrite, cancellationToken);
+        return _bridgeClient.UploadFromSourceAsync(destination, fileName, auth, sourcePath, overwrite, versioning, cancellationToken);
     }
 
     public Task<WfxResponse<JsonElement>> UploadRawAsync(
@@ -183,6 +185,7 @@ public sealed class WfxPluginFacade
         BridgeAuthContext auth,
         string sourcePath,
         bool overwrite,
+        WfxUploadVersioning? versioning = null,
         IProgress<long>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -201,6 +204,6 @@ public sealed class WfxPluginFacade
             return Task.FromResult(WfxResponse<JsonElement>.Failed("Source path is required for upload."));
         }
 
-        return _bridgeClient.UploadRawAsync(destination, fileName, auth, sourcePath, overwrite, progress, cancellationToken);
+        return _bridgeClient.UploadRawAsync(destination, fileName, auth, sourcePath, overwrite, versioning, progress, cancellationToken);
     }
 }

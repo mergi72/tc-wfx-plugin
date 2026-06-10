@@ -458,6 +458,63 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
+    public async Task TransferService_PutFile_WhenBridgeRequiresVersion_RetriesWithSelectedVersioning()
+    {
+        var versionRequiredResponse = new WfxResponse<JsonElement>
+        {
+            Ok = false,
+            ErrorCode = 5,
+            Message = "Alfresco document already exists and requires version choice.",
+            Data = JsonDocument.Parse("null").RootElement.Clone(),
+            Metadata = new Dictionary<string, JsonElement>
+            {
+                ["action"] = JsonDocument.Parse("\"version_required\"").RootElement.Clone(),
+                ["current_version"] = JsonDocument.Parse("\"1.4\"").RootElement.Clone(),
+                ["current_version_type"] = JsonDocument.Parse("\"MINOR\"").RootElement.Clone(),
+            },
+        };
+        var client = new FakeBridgeClient
+        {
+            UploadResponses = new Queue<WfxResponse<JsonElement>>(
+            [
+                versionRequiredResponse,
+                JsonResponse(true, "{\"metadata\":{\"action\":\"version\"}}"),
+            ]),
+        };
+        var versioningProvider = new FixedVersioningDecisionProvider(new WfxUploadVersioning
+        {
+            Mode = "version",
+            MajorVersion = true,
+            Comment = "TC upload",
+        });
+
+        var service = CreateTransferService(client, versioningProvider);
+        var source = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.tmp");
+        await File.WriteAllTextAsync(source, "payload");
+
+        try
+        {
+            var result = await service.PutFileAsync(source, "\\alfresco\\path\\target.docx", overwrite: true);
+
+            Assert.Equal(WfxResultCodes.Success, result);
+            Assert.Equal(1, versioningProvider.CallCount);
+            Assert.NotNull(versioningProvider.LastRequest);
+            Assert.Equal("target.docx", versioningProvider.LastRequest.FileName);
+            Assert.NotNull(client.LastUploadVersioning);
+            Assert.Equal("version", client.LastUploadVersioning.Mode);
+            Assert.True(client.LastUploadVersioning.MajorVersion);
+            Assert.Equal("TC upload", client.LastUploadVersioning.Comment);
+        }
+        finally
+        {
+            if (File.Exists(source))
+            {
+                File.Delete(source);
+            }
+        }
+    }
+
+    [Fact]
     public async Task TransferService_MkDir_MapsBridgeError()
     {
         var client = new FakeBridgeClient
@@ -717,6 +774,12 @@ public sealed class WfxServicesTests
         return new WfxTransferService(facade, CreateAuthProvider());
     }
 
+    private static WfxTransferService CreateTransferService(FakeBridgeClient bridgeClient, IWfxVersioningDecisionProvider versioningDecisionProvider)
+    {
+        var facade = new WfxPluginFacade(bridgeClient);
+        return new WfxTransferService(facade, CreateAuthProvider(), versioningDecisionProvider: versioningDecisionProvider);
+    }
+
     private static WfxPluginRuntime CreateRuntime(FakeBridgeClient bridgeClient)
     {
         var facade = new WfxPluginFacade(bridgeClient);
@@ -816,6 +879,8 @@ public sealed class WfxServicesTests
         public string? LastUploadContentBase64 { get; private set; }
         public string? LastUploadSourcePath { get; private set; }
         public bool LastUploadOverwrite { get; private set; }
+        public WfxUploadVersioning? LastUploadVersioning { get; private set; }
+        public Queue<WfxResponse<JsonElement>>? UploadResponses { get; set; }
         public IReadOnlyList<long>? UploadProgressOffsets { get; set; }
         public bool BlockDownloadUntilCanceled { get; set; }
         private readonly TaskCompletionSource<bool> _downloadStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -869,33 +934,36 @@ public sealed class WfxServicesTests
             return _downloadStarted.Task;
         }
 
-        public Task<WfxResponse<JsonElement>> UploadAsync(string destination, string fileName, BridgeAuthContext auth, string? contentBase64, bool overwrite, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> UploadAsync(string destination, string fileName, BridgeAuthContext auth, string? contentBase64, bool overwrite, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
         {
             LastUploadDestination = destination;
             LastUploadFileName = fileName;
             LastUploadContentBase64 = contentBase64;
             LastUploadSourcePath = null;
             LastUploadOverwrite = overwrite;
+            LastUploadVersioning = versioning;
             return Task.FromResult(UploadResponse);
         }
 
-        public Task<WfxResponse<JsonElement>> UploadFromSourceAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> UploadFromSourceAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
         {
             LastUploadDestination = destination;
             LastUploadFileName = fileName;
             LastUploadContentBase64 = null;
             LastUploadSourcePath = sourcePath;
             LastUploadOverwrite = overwrite;
+            LastUploadVersioning = versioning;
             return Task.FromResult(UploadResponse);
         }
 
-        public Task<WfxResponse<JsonElement>> UploadRawAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> UploadRawAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, WfxUploadVersioning? versioning = null, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
         {
             LastUploadDestination = destination;
             LastUploadFileName = fileName;
             LastUploadContentBase64 = null;
             LastUploadSourcePath = sourcePath;
             LastUploadOverwrite = overwrite;
+            LastUploadVersioning = versioning;
             if (progress is not null && UploadProgressOffsets is not null)
             {
                 foreach (var bytesTransferred in UploadProgressOffsets)
@@ -904,7 +972,32 @@ public sealed class WfxServicesTests
                 }
             }
 
+            if (UploadResponses is { Count: > 0 })
+            {
+                return Task.FromResult(UploadResponses.Dequeue());
+            }
+
             return Task.FromResult(UploadResponse);
+        }
+    }
+
+    private sealed class FixedVersioningDecisionProvider : IWfxVersioningDecisionProvider
+    {
+        private readonly WfxUploadVersioning? _versioning;
+
+        public FixedVersioningDecisionProvider(WfxUploadVersioning? versioning)
+        {
+            _versioning = versioning;
+        }
+
+        public int CallCount { get; private set; }
+        public WfxVersioningRequest? LastRequest { get; private set; }
+
+        public WfxUploadVersioning? ChooseVersioning(WfxVersioningRequest request)
+        {
+            CallCount++;
+            LastRequest = request;
+            return _versioning;
         }
     }
 

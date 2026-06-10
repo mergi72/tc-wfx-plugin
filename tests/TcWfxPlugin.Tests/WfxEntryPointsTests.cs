@@ -1064,21 +1064,21 @@ public sealed class WfxEntryPointsTests
             return Task.FromResult(new WfxResponse<JsonElement> { Ok = true, Data = data });
         }
 
-        public Task<WfxResponse<JsonElement>> UploadAsync(string destination, string fileName, BridgeAuthContext auth, string? contentBase64, bool overwrite, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> UploadAsync(string destination, string fileName, BridgeAuthContext auth, string? contentBase64, bool overwrite, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
         {
             UploadCallCount++;
             LastUploadOverwrite = overwrite;
             return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
         }
 
-        public Task<WfxResponse<JsonElement>> UploadFromSourceAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> UploadFromSourceAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
         {
             UploadCallCount++;
             LastUploadOverwrite = overwrite;
             return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
         }
 
-        public Task<WfxResponse<JsonElement>> UploadRawAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> UploadRawAsync(string destination, string fileName, BridgeAuthContext auth, string sourcePath, bool overwrite, WfxUploadVersioning? versioning = null, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
         {
             UploadCallCount++;
             LastUploadOverwrite = overwrite;

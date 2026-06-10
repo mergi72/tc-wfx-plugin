@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TcWfxPlugin.Contracts;
 using TcWfxPlugin.Core;
 
 namespace TcWfxPlugin.Wfx;
@@ -10,15 +11,18 @@ internal sealed class WfxTransferService
     private readonly WfxPluginFacade _facade;
     private readonly IWfxAuthProvider _authProvider;
     private readonly IWfxProgressReporterFactory _progressReporterFactory;
+    private readonly IWfxVersioningDecisionProvider? _versioningDecisionProvider;
 
     public WfxTransferService(
         WfxPluginFacade facade,
         IWfxAuthProvider authProvider,
-        IWfxProgressReporterFactory? progressReporterFactory = null)
+        IWfxProgressReporterFactory? progressReporterFactory = null,
+        IWfxVersioningDecisionProvider? versioningDecisionProvider = null)
     {
         _facade = facade;
         _authProvider = authProvider;
         _progressReporterFactory = progressReporterFactory ?? new WfxProgressReporterFactory();
+        _versioningDecisionProvider = versioningDecisionProvider;
     }
 
     public async Task<int> MkDirAsync(
@@ -329,9 +333,35 @@ internal sealed class WfxTransferService
             auth,
             localSourcePath,
             overwrite,
+            versioning: null,
             uploadProgress,
             cancellationToken);
         var response = await uploadHeartbeat.AwaitAsync(uploadTask, cancellationToken);
+        if (IsVersionRequiredResponse(response))
+        {
+            operation.ReportDiagnostic($"upload_version_required file={fileName} destination={uploadDestinationProviderPath}");
+            var versioning = _versioningDecisionProvider?.ChooseVersioning(new WfxVersioningRequest
+            {
+                SourcePath = localSourcePath,
+                DestinationPath = totalCommanderDestinationPath,
+                FileName = fileName,
+                Metadata = response.Metadata,
+            });
+
+            if (versioning is not null)
+            {
+                var retryTask = _facade.UploadRawAsync(
+                    uploadDestinationProviderPath,
+                    fileName,
+                    auth,
+                    localSourcePath,
+                    overwrite,
+                    versioning,
+                    uploadProgress,
+                    cancellationToken);
+                response = await uploadHeartbeat.AwaitAsync(retryTask, cancellationToken);
+            }
+        }
 
         var finalBytesTransferred = response.Ok
             ? totalBytes
@@ -340,6 +370,21 @@ internal sealed class WfxTransferService
         operation.Finish(response.Ok, finalBytesTransferred);
 
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
+    }
+
+    private static bool IsVersionRequiredResponse(WfxResponse<JsonElement> response)
+    {
+        if (response.Ok || response.Metadata is null)
+        {
+            return false;
+        }
+
+        if (!response.Metadata.TryGetValue("action", out var action) || action.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        return string.Equals(action.GetString(), "version_required", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class TransferProgressHeartbeat
