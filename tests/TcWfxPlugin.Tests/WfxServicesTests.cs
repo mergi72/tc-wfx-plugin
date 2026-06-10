@@ -515,6 +515,53 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
+    public async Task TransferService_PutFile_WhenBridgeMessageRequiresVersion_RetriesWithSelectedVersioning()
+    {
+        var versionRequiredResponse = new WfxResponse<JsonElement>
+        {
+            Ok = false,
+            ErrorCode = 5,
+            Message = "Alfresco document already exists and requires version choice: /path/target.docx",
+            Data = JsonDocument.Parse("null").RootElement.Clone(),
+            Metadata = null,
+        };
+        var client = new FakeBridgeClient
+        {
+            UploadResponses = new Queue<WfxResponse<JsonElement>>(
+            [
+                versionRequiredResponse,
+                JsonResponse(true, "{\"metadata\":{\"action\":\"version\"}}"),
+            ]),
+        };
+        var versioningProvider = new FixedVersioningDecisionProvider(new WfxUploadVersioning
+        {
+            Mode = "version",
+            MajorVersion = false,
+        });
+
+        var service = CreateTransferService(client, versioningProvider);
+        var source = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.tmp");
+        await File.WriteAllTextAsync(source, "payload");
+
+        try
+        {
+            var result = await service.PutFileAsync(source, "\\alfresco\\path\\target.docx", overwrite: true);
+
+            Assert.Equal(WfxResultCodes.Success, result);
+            Assert.Equal(1, versioningProvider.CallCount);
+            Assert.NotNull(client.LastUploadVersioning);
+            Assert.False(client.LastUploadVersioning.MajorVersion);
+        }
+        finally
+        {
+            if (File.Exists(source))
+            {
+                File.Delete(source);
+            }
+        }
+    }
+
+    [Fact]
     public async Task TransferService_MkDir_MapsBridgeError()
     {
         var client = new FakeBridgeClient

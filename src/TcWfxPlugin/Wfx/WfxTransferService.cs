@@ -337,6 +337,8 @@ internal sealed class WfxTransferService
             uploadProgress,
             cancellationToken);
         var response = await uploadHeartbeat.AwaitAsync(uploadTask, cancellationToken);
+        operation.ReportDiagnostic(
+            $"upload_response ok={response.Ok} error_code={response.ErrorCode} message={SanitizeDiagnosticMessage(response.Message)} metadata={FormatMetadataKeys(response.Metadata)}");
         if (IsVersionRequiredResponse(response))
         {
             operation.ReportDiagnostic($"upload_version_required file={fileName} destination={uploadDestinationProviderPath}");
@@ -360,6 +362,8 @@ internal sealed class WfxTransferService
                     uploadProgress,
                     cancellationToken);
                 response = await uploadHeartbeat.AwaitAsync(retryTask, cancellationToken);
+                operation.ReportDiagnostic(
+                    $"upload_version_retry_response ok={response.Ok} error_code={response.ErrorCode} message={SanitizeDiagnosticMessage(response.Message)} metadata={FormatMetadataKeys(response.Metadata)}");
             }
         }
 
@@ -374,17 +378,52 @@ internal sealed class WfxTransferService
 
     private static bool IsVersionRequiredResponse(WfxResponse<JsonElement> response)
     {
-        if (response.Ok || response.Metadata is null)
+        if (response.Ok)
         {
             return false;
+        }
+
+        if (response.Metadata is null)
+        {
+            return IsVersionRequiredMessage(response.Message);
         }
 
         if (!response.Metadata.TryGetValue("action", out var action) || action.ValueKind != JsonValueKind.String)
         {
+            return IsVersionRequiredMessage(response.Message);
+        }
+
+        return string.Equals(action.GetString(), "version_required", StringComparison.OrdinalIgnoreCase)
+            || IsVersionRequiredMessage(response.Message);
+    }
+
+    private static bool IsVersionRequiredMessage(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
             return false;
         }
 
-        return string.Equals(action.GetString(), "version_required", StringComparison.OrdinalIgnoreCase);
+        return message.Contains("version choice", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("version_required", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("document already exists", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatMetadataKeys(IReadOnlyDictionary<string, JsonElement>? metadata)
+    {
+        return metadata is null || metadata.Count == 0
+            ? "-"
+            : string.Join(",", metadata.Keys.OrderBy(static key => key, StringComparer.Ordinal));
+    }
+
+    private static string SanitizeDiagnosticMessage(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return "-";
+        }
+
+        return message.Replace('\r', ' ').Replace('\n', ' ');
     }
 
     private sealed class TransferProgressHeartbeat
