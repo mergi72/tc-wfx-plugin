@@ -20,13 +20,13 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore
-        run: dotnet restore
+        run: dotnet restore tests/TcWfxPlugin.Tests/TcWfxPlugin.Tests.csproj
 
       - name: Build
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build tests/TcWfxPlugin.Tests/TcWfxPlugin.Tests.csproj --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test --configuration Release --no-build --verbosity normal
+        run: dotnet test tests/TcWfxPlugin.Tests/TcWfxPlugin.Tests.csproj --configuration Release --no-build --verbosity normal
 
   integration-smoke:
     runs-on: windows-latest
@@ -59,7 +59,7 @@ jobs:
 
       - name: Setup Python 3.12
         if: steps.token.outputs.has_token == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -98,3 +98,4 @@ jobs:
           }
 
           Write-Host "protection-gate passed (build-and-test=$buildResult, integration-smoke=$smokeResult)."
+
