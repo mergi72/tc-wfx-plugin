@@ -4,10 +4,64 @@
 [![Plugin Version](https://img.shields.io/badge/Plugin-v0.2.4-blue)](https://github.com/mergi72/tc-wfx-plugin)
 [![Installer Release](https://img.shields.io/badge/Installer-v0.3.0--alpha-blueviolet)](https://github.com/mergi72/dms-provider-installer/releases/tag/v0.3.0-alpha)
 
-Current development branch: `develop`  
-Stable release branch: `main`
+Total Commander x64 filesystem plugin for browsing and transferring files through a local `dms-provider-bridge` instance.
+
+Use it to access document repositories exposed by the bridge, such as Alfresco or eDoCat when those providers are configured in the bridge.
+
+## Features
+
+- Browse provider roots and folders from Total Commander.
+- Download files.
+- Upload files, including large streamed uploads.
+- Rename, move, copy, delete, and create folders.
+- Use version-aware uploads when the bridge reports that an existing document needs a new version.
+- Resolve user credentials through `credential-broker` when configured.
+- Load runtime settings from `config.json` next to the plugin.
+
+## Requirements
+
+- Windows x64.
+- Total Commander x64.
+- `dms-provider-installer` for the easiest full-stack installation.
+- A running local `dms-provider-bridge`.
+- Provider and credential configuration in the bridge/broker stack.
+
+License: MIT.
+
+## Quick Start
+
+1. Install `dms-provider-installer`.
+2. Make sure the bridge is running at `http://127.0.0.1:8765/health`.
+3. Configure provider credentials using the bridge/broker setup for your environment.
+4. Open Total Commander.
+5. Open the DMS Provider filesystem plugin from Network Neighborhood / WFX plugins.
+6. Select a provider folder and work with files normally.
+
+## How It Works For Users
+
+Total Commander talks to `TcWfxPlugin.wfx64`. The plugin translates Total Commander paths like `\provider\folder` into bridge paths like `provider:/folder`, then calls the local bridge API. The bridge owns provider-specific behavior and talks to the remote DMS.
+
+This repository does not ship provider implementations. Provider roots are loaded dynamically from:
+
+- `GET /bridge/wfx/providers`
+
+## What This Project Does Not Own
+
+- Bridge installation and Windows service setup.
+- Provider configuration.
+- Provider implementations.
+- Credential Broker installation.
+- Windows Credential Manager entries.
+- Total Commander itself.
+
+Those responsibilities belong to `dms-provider-bridge`, `credential-broker`, `dms-provider-installer`, or Total Commander.
+
+## Developer Overview
 
 Separated C# repository for the Total Commander WFX plugin that integrates with `dms-provider-bridge`.
+
+Current development branch: `develop`  
+Stable release branch: `main`
 
 Current release mapping:
 
@@ -22,7 +76,7 @@ Current release mapping:
 - `credential-broker`
 - `dms-provider-installer`
 
-## Current Scope
+## Developer Scope
 
 Current status:
 - Provider support is owned by `dms-provider-bridge`.
