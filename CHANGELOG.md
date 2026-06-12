@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.4] - 2026-06-12
+
+### Changed
+
+- Updated README to describe the current plugin stack and release mapping.
+- Clarified that provider implementations are owned by `dms-provider-bridge`; the WFX plugin resolves provider roots dynamically and does not hardcode provider support.
+- Documented current bridge, credential broker, raw transfer, and versioning integration notes.
+
 ## [0.2.3] - 2026-06-10
 
 ### Added
