@@ -1,8 +1,8 @@
 # tc-wfx-plugin
 
 [![Status](https://img.shields.io/badge/Status-Alpha-orange)](https://github.com/mergi72/tc-wfx-plugin)
-[![Plugin Version](https://img.shields.io/badge/Plugin-v0.2.2-blue)](https://github.com/mergi72/tc-wfx-plugin)
-[![Installer Release](https://img.shields.io/badge/Installer-v0.2.2--alpha-blueviolet)](https://github.com/mergi72/dms-provider-installer/releases/tag/v0.2.2-alpha)
+[![Plugin Version](https://img.shields.io/badge/Plugin-v0.2.4-blue)](https://github.com/mergi72/tc-wfx-plugin)
+[![Installer Release](https://img.shields.io/badge/Installer-v0.3.0--alpha-blueviolet)](https://github.com/mergi72/dms-provider-installer/releases/tag/v0.3.0-alpha)
 
 Current development branch: `develop`  
 Stable release branch: `main`
@@ -11,32 +11,35 @@ Separated C# repository for the Total Commander WFX plugin that integrates with 
 
 Current release mapping:
 
-- Plugin repository latest changelog version: `0.2.2`
-- Latest installer release that bundles bridge + plugin: `v0.2.2-alpha`
+- Plugin repository latest changelog version: `0.2.4`
+- Latest orchestrator installer release: `dms-provider-installer v0.3.0-alpha`
+- Current tested bridge release: `dms-provider-bridge v0.4.17`
+- Current credential broker release: `credential-broker v0.2.9`
 
 ## Related Projects
 
 - `dms-provider-bridge`
+- `credential-broker`
 - `dms-provider-installer`
 
-## Release Scope (v0.1.0-alpha)
+## Current Scope
 
 Current status:
-- Alfresco provider: supported
-- eDoCat provider: planned / not yet enabled in this alpha milestone
-- FSO provider: experimental / planned
+- Provider support is owned by `dms-provider-bridge`.
+- Root providers are resolved dynamically from `GET /bridge/wfx/providers`.
+- This repository does not hardcode or ship provider implementations.
+- Credential resolution can use `credential-broker` when configured.
 
 Current intended flow:
-- TC WFX plugin -> bridge -> Alfresco provider
-
-This alpha milestone does not yet include full eDoCat branch enablement.
+- Total Commander WFX plugin -> credential broker for user credentials when needed -> bridge -> provider.
+- Bridge and broker installation are owned by their dedicated installers; the orchestrator installer bundles them with the WFX plugin.
 
 ## Automation
 
 - CI workflow: `.github/workflows/ci.yml` (restore, build, test on push/PR)
 - Release artifact workflow: `.github/workflows/release-artifact.yml` (manual run or tag `v*`)
 - Release workflow gating: when secret `BRIDGE_REPO_TOKEN` is set, release first runs bridge integration smoke and publishes artifact only if smoke succeeds.
-- Integration smoke workflow job: starts local `dms-provider-bridge`, validates `GET /health`, `GET /bridge/wfx/providers`, `POST /bridge/wfx/list`, and performs streamed large upload smoke via `POST /bridge/wfx/upload-raw` (default 176 MB) using FSO path.
+- Integration smoke workflow job starts local `dms-provider-bridge`, validates `GET /health`, `GET /bridge/wfx/providers`, `POST /bridge/wfx/list`, and can perform streamed large upload smoke via `POST /bridge/wfx/upload-raw` when a suitable bridge provider/path is configured.
 	- For cross-repo checkout in GitHub Actions, configure secret `BRIDGE_REPO_TOKEN` (read access to `mergi72/dms-provider-bridge`).
 - Branch protection helper: CI publishes final job `protection-gate` that summarizes required job outcomes.
   - Recommended GitHub branch rule for `main`: require status check `protection-gate`.
@@ -44,7 +47,7 @@ This alpha milestone does not yet include full eDoCat branch enablement.
 
 ## Release Notes
 
-- See `CHANGELOG.md` for release history and `v0.2.2` notes.
+- See `CHANGELOG.md` for release history and `v0.2.4` notes.
 - For first external testing scope, see `RELEASE_NOTES_v0.1.0-alpha.md`.
 
 ## License
@@ -65,13 +68,16 @@ This alpha milestone does not yet include full eDoCat branch enablement.
 - `WfxPluginRuntime` implements WFX-like operations for listing, iterating, mkdir, delete, rename, copy, download, and upload.
 - `WfxEntryPoints` exposes sync wrappers (`FsFindFirst`, `FsFindNext`, `FsFindClose`, `FsMkDir`, `FsDeleteFile`, `FsRenMovFile`, `FsGetFile`, `FsPutFile`).
 - `IWfxAuthProvider` decouples credential retrieval from runtime operations.
-- `EnvironmentAuthProvider` loads auth data from environment variables.
+- `TcDialogAuthProvider` resolves credentials through environment defaults, credential broker, or Total Commander prompts.
+- `EnvironmentAuthProvider` remains available for tests and direct embedding scenarios.
 - `TotalCommanderPathMapper` translates Total Commander-style paths (`\provider\path`) to bridge provider paths (`provider:/path`).
 - Root listing (`\` and `\*.*`) is served as provider folders resolved dynamically from `GET /bridge/wfx/providers`.
-- Wildcard listing masks in paths (for example `\edocat\folder\*.*`) are normalized to directory provider paths.
+- Wildcard listing masks in paths (for example `\provider\folder\*.*`) are normalized to directory provider paths.
 - Root provider list is cached with TTL to reduce bridge calls during panel navigation.
 - Root providers come from the bridge response. If `TC_WFX_PROVIDERS` is set, it overrides the bridge response. If the bridge is unavailable and no cache is present, the root listing stays empty instead of falling back to hardcoded providers.
 - Find contexts are cleaned up automatically by idle TTL and bounded by maximum context count to prevent handle leaks.
+- Existing-document upload can handle bridge `version_required` responses and ask for major/minor version selection.
+- Large uploads use streamed multipart `upload-raw`; downloads use raw streaming where available.
 
 ## Native Exports
 
@@ -95,6 +101,8 @@ This alpha milestone does not yet include full eDoCat branch enablement.
 - `TC_WFX_USERNAME`
 - `TC_WFX_PASSWORD`
 - `TC_WFX_TOKEN`
+- `TC_WFX_CREDENTIAL_BROKER_URL` (default credential broker endpoint)
+- `TC_WFX_CREDENTIAL_BROKER_TIMEOUT_MS` (credential broker request timeout)
 - `TC_WFX_PROVIDERS` (optional comma/semicolon-separated root provider override; when missing, providers are resolved from bridge)
 - `TC_WFX_PROVIDERS_CACHE_SECONDS` (optional TTL for cached root providers loaded from bridge; default `30`, `0` disables cache)
 - `TC_WFX_FIND_CONTEXT_TTL_SECONDS` (optional TTL for inactive find contexts; default `600`, `0` disables TTL cleanup)
@@ -167,12 +175,12 @@ Cache can also be invalidated explicitly through `WfxEntryPoints.InvalidateProvi
 - `POST /bridge/wfx/move`
 - `POST /bridge/wfx/copy`
 - `POST /bridge/wfx/download`
+- `POST /bridge/wfx/download-raw`
 - `POST /bridge/wfx/upload`
 - `POST /bridge/wfx/upload-raw`
+- `POST /bridge/wfx/upload-stream` (bridge alias for streamed raw upload)
 
-## Next Implementation Step
-
-Publish the plugin as native AOT DLL and validate exact ABI compatibility with the Total Commander WFX specification.
+Upload requests can include bridge `versioning` data with `majorVersion` when the bridge asks for a new version decision.
 
 ## Notes
 
