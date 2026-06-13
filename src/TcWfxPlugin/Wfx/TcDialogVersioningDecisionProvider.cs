@@ -5,42 +5,87 @@ namespace TcWfxPlugin.Wfx;
 
 public sealed class TcDialogVersioningDecisionProvider : IWfxVersioningDecisionProvider
 {
-    private readonly Func<string, string, bool> _requestYesNo;
+    private readonly Func<string, string, WfxVersioningDialogChoice> _requestVersioningChoice;
+    private readonly WfxLocalization _text;
 
-    public TcDialogVersioningDecisionProvider(Func<string, string, bool> requestYesNo)
+    public TcDialogVersioningDecisionProvider(
+        Func<string, string, WfxVersioningDialogChoice> requestVersioningChoice,
+        WfxDialogLanguage language)
+        : this(requestVersioningChoice, languageProvider: null, language)
     {
-        _requestYesNo = requestYesNo;
+    }
+
+    public TcDialogVersioningDecisionProvider(
+        Func<string, string, WfxVersioningDialogChoice> requestVersioningChoice,
+        Func<string?>? languageProvider = null,
+        WfxDialogLanguage? language = null)
+    {
+        _requestVersioningChoice = requestVersioningChoice;
+        _text = language.HasValue
+            ? WfxLocalization.For(language.Value)
+            : WfxLocalization.Current(languageProvider ?? (() => null));
     }
 
     public WfxUploadVersioning? ChooseVersioning(WfxVersioningRequest request)
     {
         var currentVersion = TryGetString(request.Metadata, "current_version") ?? "?";
         var currentVersionType = TryGetString(request.Metadata, "current_version_type");
+        var sourceVersion = TryGetString(request.Metadata, "source_version");
+        var sourceVersionType = TryGetString(request.Metadata, "source_version_type");
+        var targetVersion = TryGetString(request.Metadata, "target_version") ?? currentVersion;
+        var targetVersionType = TryGetString(request.Metadata, "target_version_type") ?? currentVersionType;
+        var hasProviderSource = HasMetadataValue(request.Metadata, "source_provider")
+            || HasMetadataValue(request.Metadata, "source_path")
+            || HasMetadataValue(request.Metadata, "target_provider")
+            || HasMetadataValue(request.Metadata, "target_path");
         var modifiedBy = TryGetString(request.Metadata, "current_modified_by");
         var modifiedAt = TryGetString(request.Metadata, "current_modified_at");
         var nextMajorVersion = TryCalculateNextVersion(currentVersion, major: true) ?? "next major";
         var nextMinorVersion = TryCalculateNextVersion(currentVersion, major: false) ?? "next minor";
 
-        var text =
-            $"Document already exists:\n{request.FileName}\n\n" +
-            $"Current version: {currentVersion}{FormatSuffix(currentVersionType)}\n" +
-            $"Modified by: {modifiedBy ?? "-"}\n" +
-            $"Modified at: {modifiedAt ?? "-"}\n\n" +
-            "Create a MAJOR version?\n\n" +
-            $"Yes = major version {nextMajorVersion}\n" +
-            $"No = minor version {nextMinorVersion}";
+        var text = _text.VersionConflictText(
+            request.FileName,
+            VersionLines(hasProviderSource, sourceVersion, sourceVersionType, targetVersion, targetVersionType, currentVersion, currentVersionType),
+            modifiedBy,
+            modifiedAt,
+            nextMajorVersion,
+            nextMinorVersion);
 
-        var majorVersion = _requestYesNo("Upload new version", text);
+        var choice = _requestVersioningChoice(_text.VersioningTitle, text);
+        if (choice == WfxVersioningDialogChoice.Cancel)
+        {
+            return null;
+        }
+
         return new WfxUploadVersioning
         {
             Mode = "version",
-            MajorVersion = majorVersion,
+            MajorVersion = choice == WfxVersioningDialogChoice.Major,
         };
     }
 
-    private static string FormatSuffix(string? value)
+    private string VersionLines(
+        bool hasProviderSource,
+        string? sourceVersion,
+        string? sourceVersionType,
+        string targetVersion,
+        string? targetVersionType,
+        string currentVersion,
+        string? currentVersionType)
     {
-        return string.IsNullOrWhiteSpace(value) ? string.Empty : $" ({value})";
+        if (!hasProviderSource)
+        {
+            return _text.CurrentVersionLine(currentVersion, currentVersionType);
+        }
+
+        return _text.SourceTargetVersionLines(sourceVersion ?? string.Empty, sourceVersionType, targetVersion, targetVersionType);
+    }
+
+    private static bool HasMetadataValue(Dictionary<string, JsonElement>? metadata, string key)
+    {
+        return metadata is not null
+            && metadata.TryGetValue(key, out var value)
+            && value.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined;
     }
 
     private static string? TryGetString(Dictionary<string, JsonElement>? metadata, string key)
@@ -81,4 +126,11 @@ public sealed class TcDialogVersioningDecisionProvider : IWfxVersioningDecisionP
 
         return $"{majorPart}.{minorPart + 1}";
     }
+}
+
+public enum WfxVersioningDialogChoice
+{
+    Cancel,
+    Minor,
+    Major,
 }

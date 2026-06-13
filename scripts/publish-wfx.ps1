@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $projectPath = Join-Path $PSScriptRoot "..\src\TcWfxPlugin\TcWfxPlugin.csproj"
 $outputPath = Join-Path $PSScriptRoot "..\artifacts\TcWfxPlugin-$RuntimeIdentifier"
 $configTemplatePath = Join-Path $PSScriptRoot "..\config\config.json"
+$localizePath = Join-Path $PSScriptRoot "..\config\localize.json"
 
 Write-Host "Publishing WFX Native AOT library..."
 Write-Host "Project: $projectPath"
@@ -33,6 +34,13 @@ if (Test-Path $configTemplatePath) {
     New-Item -ItemType Directory -Path $outputConfigDir -Force | Out-Null
     Copy-Item -Path $configTemplatePath -Destination (Join-Path $outputConfigDir "config.json") -Force
     Write-Host "Copied runtime config template to: $outputConfigDir\config.json"
+}
+
+if (Test-Path $localizePath) {
+    $outputConfigDir = Join-Path $outputPath "config"
+    New-Item -ItemType Directory -Path $outputConfigDir -Force | Out-Null
+    Copy-Item -Path $localizePath -Destination (Join-Path $outputConfigDir "localize.json") -Force
+    Write-Host "Copied localization file to: $outputConfigDir\localize.json"
 }
 
 Write-Host "Publish completed successfully."

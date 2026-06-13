@@ -9,6 +9,7 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
     private readonly ICredentialStore _credentialStore;
     private readonly ICredentialBrokerClient? _credentialBrokerClient;
     private readonly string _credentialTarget;
+    private readonly WfxLocalization _text;
     private readonly object _syncRoot = new();
     private BridgeAuthContext? _cachedAuth;
     private bool _ignoreStoredCredentialsOnce;
@@ -18,13 +19,18 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
         Func<string, string, bool> requestYesNo,
         ICredentialStore credentialStore,
         string credentialTarget,
-        ICredentialBrokerClient? credentialBrokerClient = null)
+        ICredentialBrokerClient? credentialBrokerClient = null,
+        Func<string?>? languageProvider = null,
+        WfxDialogLanguage? language = null)
     {
         _requestValue = requestValue;
         _requestYesNo = requestYesNo;
         _credentialStore = credentialStore;
         _credentialTarget = credentialTarget;
         _credentialBrokerClient = credentialBrokerClient;
+        _text = language.HasValue
+            ? WfxLocalization.For(language.Value)
+            : WfxLocalization.Current(languageProvider ?? (() => null));
     }
 
     public BridgeAuthContext GetAuthContext(string? provider = null)
@@ -81,8 +87,8 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                 {
                     username = _requestValue(
                         WfxNativeExports.RequestTypeUserName,
-                        "Provider login",
-                        "User name:");
+                        _text.ProviderLoginTitle,
+                        _text.UserNamePrompt);
                     promptedForCredentials = true;
                 }
 
@@ -90,8 +96,8 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                 {
                     password = _requestValue(
                         WfxNativeExports.RequestTypePassword,
-                        "Provider login",
-                        "Password:");
+                        _text.ProviderLoginTitle,
+                        _text.PasswordPrompt);
                     promptedForCredentials = true;
                 }
 
@@ -100,8 +106,8 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                 if (promptedForCredentials && !string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
                 {
                     var remember = _requestYesNo(
-                        "Remember login",
-                        "Remember credentials for provider bridge?");
+                        _text.RememberLoginTitle,
+                        _text.RememberLoginQuestion);
 
                     if (remember)
                     {

@@ -19,11 +19,17 @@ public static class WfxNativeExports
     private const int RequestBufferLength = 512;
     private const int BoolSuccess = 1;
     private const int BoolFailure = 0;
+    private const int TcFileUserAbort = 5;
+    private const uint MessageBoxYesNoCancel = 0x00000003;
+    private const uint MessageBoxIconQuestion = 0x00000020;
+    private const int MessageBoxResultYes = 6;
+    private const int MessageBoxResultNo = 7;
 
     private static readonly Lazy<WfxEntryPoints> EntryPoints = new(CreateEntryPoints);
     private static readonly object CallbackSyncRoot = new();
     private static readonly object DiagnosticLogSyncRoot = new();
     private static readonly WfxRuntimeConfig RuntimeConfig = WfxRuntimeConfig.Load();
+    private static readonly WfxLocalization Localization = WfxLocalization.Current(GetTotalCommanderLanguageCode);
     private static readonly bool DiagnosticLoggingEnabled = RuntimeConfig.LoggingEnabled;
     private static readonly string DiagnosticLogDirectory = RuntimeConfig.LogDirectoryPath;
     private static readonly string InitLogPath = Path.Combine(DiagnosticLogDirectory, "wfx-init.log");
@@ -196,7 +202,7 @@ public static class WfxNativeExports
         var newName = Marshal.PtrToStringUni(newNamePtr) ?? string.Empty;
         var progress = CreateDirectProgressReporter(move != 0 ? "move" : "copy", oldName, newName);
         var result = EntryPoints.Value.FsRenMovFile(oldName, newName, move != 0, progress);
-        return result;
+        return MapFileTransferResultForTotalCommander(result);
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsGetFileW")]
@@ -243,7 +249,7 @@ public static class WfxNativeExports
             AppendDiagnosticLog(
                 ProgressLogPath,
                 $"{DateTime.Now:HH:mm:ss.fff} FsGetFileW completed thread={Thread.CurrentThread.ManagedThreadId} result={directResult} elapsedMs={stopwatch.ElapsedMilliseconds}");
-            return directResult;
+            return MapFileTransferResultForTotalCommander(directResult);
         }
 
         affinityProgress.Report(new WfxTransferProgress
@@ -263,7 +269,7 @@ public static class WfxNativeExports
         AppendDiagnosticLog(
             ProgressLogPath,
             $"{DateTime.Now:HH:mm:ss.fff} FsGetFileW completed thread={Thread.CurrentThread.ManagedThreadId} result={result} elapsedMs={stopwatch.ElapsedMilliseconds}");
-        return result;
+        return MapFileTransferResultForTotalCommander(result);
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsPutFileW")]
@@ -348,7 +354,7 @@ public static class WfxNativeExports
             AppendDiagnosticLog(
                 ProgressLogPath,
                 $"{DateTime.Now:HH:mm:ss.fff} FsPutFileW completed thread={Thread.CurrentThread.ManagedThreadId} result={directResult} elapsedMs={stopwatch.ElapsedMilliseconds}");
-            return directResult;
+            return MapFileTransferResultForTotalCommander(directResult);
         }
 
         affinityProgress.Report(new WfxTransferProgress
@@ -368,7 +374,14 @@ public static class WfxNativeExports
         AppendDiagnosticLog(
             ProgressLogPath,
             $"{DateTime.Now:HH:mm:ss.fff} FsPutFileW completed thread={Thread.CurrentThread.ManagedThreadId} result={result} elapsedMs={stopwatch.ElapsedMilliseconds}");
-        return result;
+        return MapFileTransferResultForTotalCommander(result);
+    }
+
+    private static int MapFileTransferResultForTotalCommander(int result)
+    {
+        return result == WfxResultCodes.UserAbort
+            ? TcFileUserAbort
+            : result;
     }
 
     private static int ExecuteTransferWithThreadAffinity(string diagnosticTag, ThreadAffinityTcProgressReporter reporter, Task<int> transferTask)
@@ -470,10 +483,11 @@ public static class WfxNativeExports
             TryConfirmYesNo,
             new WindowsCredentialStore(),
             "tc-wfx/bridge",
-            new HttpCredentialBrokerClient());
+            new HttpCredentialBrokerClient(),
+            GetTotalCommanderLanguageCode);
         var client = new WfxBridgeClient(baseUrl, RuntimeConfig.BridgeTimeout);
         var facade = new WfxPluginFacade(client);
-        var versioningProvider = new TcDialogVersioningDecisionProvider(TryConfirmYesNo);
+        var versioningProvider = new TcDialogVersioningDecisionProvider(ChooseVersioningWithCancel, GetTotalCommanderLanguageCode);
         var runtime = new WfxPluginRuntime(facade, authProvider, versioningDecisionProvider: versioningProvider);
         runtime.TransferProgressChanged += OnTransferProgressChanged;
         return new WfxEntryPoints(runtime);
@@ -634,8 +648,8 @@ public static class WfxNativeExports
         nint textPtr = nint.Zero;
         try
         {
-            titlePtr = Marshal.StringToHGlobalUni("Overwrite existing file");
-            textPtr = Marshal.StringToHGlobalUni($"File already exists:\n{localPath}\n\nOverwrite it?");
+            titlePtr = Marshal.StringToHGlobalUni(Localization.OverwriteTitle);
+            textPtr = Marshal.StringToHGlobalUni(Localization.OverwriteQuestion(localPath));
             var result = requestProc(pluginNumber, RequestTypeMsgYesNo, titlePtr, textPtr, nint.Zero, 0);
             return result != 0;
         }
@@ -698,6 +712,127 @@ public static class WfxNativeExports
                 Marshal.FreeHGlobal(textPtr);
             }
         }
+    }
+
+    private static WfxVersioningDialogChoice ChooseVersioningWithCancel(string title, string text)
+    {
+        try
+        {
+            var result = MessageBoxW(nint.Zero, text, title, MessageBoxYesNoCancel | MessageBoxIconQuestion);
+            return result switch
+            {
+                MessageBoxResultYes => WfxVersioningDialogChoice.Major,
+                MessageBoxResultNo => WfxVersioningDialogChoice.Minor,
+                _ => WfxVersioningDialogChoice.Cancel,
+            };
+        }
+        catch
+        {
+            return WfxVersioningDialogChoice.Cancel;
+        }
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = false)]
+    private static extern int MessageBoxW(nint hWnd, string text, string caption, uint type);
+
+    private static string? GetTotalCommanderLanguageCode()
+    {
+        string? defaultIniPath;
+        lock (CallbackSyncRoot)
+        {
+            defaultIniPath = _defaultParams?.DefaultIniName;
+        }
+
+        foreach (var iniPath in GetTotalCommanderIniCandidates(defaultIniPath))
+        {
+            var languageIni = TryReadIniValue(iniPath, "LanguageIni");
+            if (!string.IsNullOrWhiteSpace(languageIni))
+            {
+                AppendDiagnosticLog(
+                    DefaultParamsLogPath,
+                    $"{DateTime.Now:HH:mm:ss.fff} TC language detected ini={iniPath} languageIni={languageIni}");
+                return languageIni;
+            }
+        }
+
+        AppendDiagnosticLog(
+            DefaultParamsLogPath,
+            $"{DateTime.Now:HH:mm:ss.fff} TC language not detected defaultIniName={defaultIniPath ?? "-"}");
+        return null;
+    }
+
+    private static IEnumerable<string> GetTotalCommanderIniCandidates(string? defaultIniPath)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in RawTotalCommanderIniCandidates(defaultIniPath))
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                continue;
+            }
+
+            var normalized = candidate.Trim().Trim('"');
+            if (seen.Add(normalized) && File.Exists(normalized))
+            {
+                yield return normalized;
+            }
+        }
+    }
+
+    private static IEnumerable<string?> RawTotalCommanderIniCandidates(string? defaultIniPath)
+    {
+        yield return Environment.GetEnvironmentVariable("COMMANDER_INI");
+
+        if (!string.IsNullOrWhiteSpace(defaultIniPath))
+        {
+            var defaultDirectory = Path.GetDirectoryName(defaultIniPath);
+            if (!string.IsNullOrWhiteSpace(defaultDirectory))
+            {
+                yield return Path.Combine(defaultDirectory, "wincmd.ini");
+            }
+
+            yield return defaultIniPath;
+        }
+
+        yield return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "GHISLER",
+            "wincmd.ini");
+    }
+
+    private static string? TryReadIniValue(string iniPath, string targetKey)
+    {
+        try
+        {
+            foreach (var rawLine in File.ReadLines(iniPath))
+            {
+                var line = rawLine.Trim();
+                if (line.Length == 0 || line.StartsWith(";", StringComparison.Ordinal) || line.StartsWith("#", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var separatorIndex = line.IndexOf('=');
+                if (separatorIndex <= 0)
+                {
+                    continue;
+                }
+
+                var key = line[..separatorIndex].Trim();
+                if (!string.Equals(key, targetKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return line[(separatorIndex + 1)..].Trim().Trim('"');
+            }
+        }
+        catch
+        {
+            // Localization should never affect WFX behavior.
+        }
+
+        return null;
     }
 
     private static string? TryRequestValue(int requestType, string title, string text)

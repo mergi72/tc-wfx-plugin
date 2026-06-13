@@ -562,6 +562,54 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
+    public async Task Runtime_PutFile_WhenVersionDialogIsCanceled_ReturnsUserAbortWithoutAuthReset()
+    {
+        var versionRequiredResponse = new WfxResponse<JsonElement>
+        {
+            Ok = false,
+            ErrorCode = 5,
+            Message = "Alfresco document already exists and requires version choice.",
+            Data = JsonDocument.Parse("null").RootElement.Clone(),
+            Metadata = new Dictionary<string, JsonElement>
+            {
+                ["action"] = JsonDocument.Parse("\"version_required\"").RootElement.Clone(),
+                ["current_version"] = JsonDocument.Parse("\"1.4\"").RootElement.Clone(),
+            },
+        };
+        var responses = new Queue<WfxResponse<JsonElement>>([versionRequiredResponse]);
+        var client = new FakeBridgeClient
+        {
+            UploadResponses = responses,
+        };
+        var authProvider = new SwitchingAuthProvider(
+            new BridgeAuthContext { Mode = "credentials", Username = "first-user", Password = "pass" },
+            new BridgeAuthContext { Mode = "credentials", Username = "second-user", Password = "pass" });
+        var versioningProvider = new FixedVersioningDecisionProvider(null);
+
+        var runtime = CreateRuntime(client, authProvider, versioningProvider);
+        var source = Path.Combine(Path.GetTempPath(), $"tc-wfx-plugin-{Guid.NewGuid():N}.tmp");
+        await File.WriteAllTextAsync(source, "payload");
+
+        try
+        {
+            var result = await runtime.PutFileAsync(source, "\\alfresco\\path\\target.docx", overwrite: true);
+
+            Assert.Equal(WfxResultCodes.UserAbort, result);
+            Assert.Equal(0, authProvider.ResetCount);
+            Assert.Equal(1, versioningProvider.CallCount);
+            Assert.Null(client.LastUploadVersioning);
+            Assert.Empty(responses);
+        }
+        finally
+        {
+            if (File.Exists(source))
+            {
+                File.Delete(source);
+            }
+        }
+    }
+
+    [Fact]
     public async Task TransferService_MkDir_MapsBridgeError()
     {
         var client = new FakeBridgeClient
@@ -776,6 +824,41 @@ public sealed class WfxServicesTests
         Assert.NotNull(client.LastCopyVersioning);
         Assert.True(client.LastCopyVersioning.MajorVersion);
         Assert.Equal("TC copy", client.LastCopyVersioning.Comment);
+    }
+
+    [Fact]
+    public async Task Runtime_Copy_WhenVersionDialogIsCanceled_ReturnsUserAbortWithoutAuthReset()
+    {
+        var versionRequiredResponse = new WfxResponse<JsonElement>
+        {
+            Ok = false,
+            ErrorCode = 5,
+            Message = "Alfresco document already exists and requires version choice.",
+            Data = JsonDocument.Parse("null").RootElement.Clone(),
+            Metadata = new Dictionary<string, JsonElement>
+            {
+                ["action"] = JsonDocument.Parse("\"version_required\"").RootElement.Clone(),
+                ["current_version"] = JsonDocument.Parse("\"1.4\"").RootElement.Clone(),
+            },
+        };
+        var responses = new Queue<WfxResponse<JsonElement>>([versionRequiredResponse]);
+        var client = new FakeBridgeClient
+        {
+            CopyResponses = responses,
+        };
+        var authProvider = new SwitchingAuthProvider(
+            new BridgeAuthContext { Mode = "credentials", Username = "first-user", Password = "pass" },
+            new BridgeAuthContext { Mode = "credentials", Username = "second-user", Password = "pass" });
+        var versioningProvider = new FixedVersioningDecisionProvider(null);
+
+        var runtime = CreateRuntime(client, authProvider, versioningProvider);
+        var result = await runtime.CopyAsync("\\edocat\\source.txt", "\\alfresco\\target.txt");
+
+        Assert.Equal(WfxResultCodes.UserAbort, result);
+        Assert.Equal(0, authProvider.ResetCount);
+        Assert.Equal(1, versioningProvider.CallCount);
+        Assert.Null(client.LastCopyVersioning);
+        Assert.Empty(responses);
     }
 
     [Fact]

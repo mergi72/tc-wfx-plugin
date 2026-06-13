@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.6] - 2026-06-13
+
+### Added
+
+- Localized WFX dialog text loaded from `config/localize.json`, with Czech and English entries and English fallback.
+- Total Commander language detection now reads `LanguageIni` from `wincmd.ini`, including the common `fsplugin.ini` default-params path.
+
+### Changed
+
+- Version conflict cancel/close now returns Total Commander's user-abort transfer result instead of showing a generic copy/download error.
+- Version conflict, provider login, remember-login, and overwrite prompts now use localized text.
+
 ## [0.2.5] - 2026-06-13
 
 ### Added

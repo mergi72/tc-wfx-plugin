@@ -1,0 +1,30 @@
+{
+  "en": {
+    "providerLoginTitle": "Provider login",
+    "userNamePrompt": "User name:",
+    "passwordPrompt": "Password:",
+    "rememberLoginTitle": "Remember login",
+    "rememberLoginQuestion": "Remember credentials for provider bridge?",
+    "overwriteTitle": "Overwrite existing file",
+    "overwriteQuestion": "File already exists:\\n{path}\\n\\nOverwrite it?",
+    "versioningTitle": "Upload new version",
+    "versionConflictText": "Document already exists:\\n{fileName}\\n\\n{versionLines}Modified by: {modifiedBy}\\nModified at: {modifiedAt}\\n\\nUpload source content as a new target version?\\n\\nYes = new MAJOR target version {nextMajorVersion}\\nNo = new MINOR target version {nextMinorVersion}\\nCancel = do nothing",
+    "currentVersionLine": "Current version: {version}{versionTypeSuffix}\\n",
+    "sourceTargetVersionLines": "Source version: {sourceVersion}\\nTarget version: {targetVersion}\\n",
+    "unknownVersion": "unknown"
+  },
+  "cs": {
+    "providerLoginTitle": "P\u0159ihl\u00e1\u0161en\u00ed k provideru",
+    "userNamePrompt": "U\u017eivatelsk\u00e9 jm\u00e9no:",
+    "passwordPrompt": "Heslo:",
+    "rememberLoginTitle": "Zapamatovat p\u0159ihl\u00e1\u0161en\u00ed",
+    "rememberLoginQuestion": "Zapamatovat p\u0159ihla\u0161ovac\u00ed \u00fadaje pro provider bridge?",
+    "overwriteTitle": "P\u0159epsat existuj\u00edc\u00ed soubor",
+    "overwriteQuestion": "Soubor ji\u017e existuje:\\n{path}\\n\\nP\u0159epsat?",
+    "versioningTitle": "Nahr\u00e1t novou verzi",
+    "versionConflictText": "Dokument ji\u017e existuje:\\n{fileName}\\n\\n{versionLines}Zm\u011bnil: {modifiedBy}\\nZm\u011bn\u011bno: {modifiedAt}\\n\\nNahr\u00e1t zdrojov\u00fd obsah jako novou verzi c\u00edlov\u00e9ho dokumentu?\\n\\nAno = nov\u00e1 HLAVN\u00cd verze c\u00edle {nextMajorVersion}\\nNe = nov\u00e1 VEDLEJ\u0160\u00cd verze c\u00edle {nextMinorVersion}\\nStorno = neprov\u00e1d\u011bt nic",
+    "currentVersionLine": "Aktu\u00e1ln\u00ed verze: {version}{versionTypeSuffix}\\n",
+    "sourceTargetVersionLines": "Zdrojov\u00e1 verze: {sourceVersion}\\nC\u00edlov\u00e1 verze: {targetVersion}\\n",
+    "unknownVersion": "nezn\u00e1m\u00e1"
+  }
+}

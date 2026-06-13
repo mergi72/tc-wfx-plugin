@@ -1,7 +1,7 @@
 # tc-wfx-plugin
 
 [![Status](https://img.shields.io/badge/Status-Alpha-orange)](https://github.com/mergi72/tc-wfx-plugin)
-[![Plugin Version](https://img.shields.io/badge/Plugin-v0.2.5-blue)](https://github.com/mergi72/tc-wfx-plugin)
+[![Plugin Version](https://img.shields.io/badge/Plugin-v0.2.6-blue)](https://github.com/mergi72/tc-wfx-plugin)
 [![Installer Release](https://img.shields.io/badge/Installer-v0.3.3--alpha-blueviolet)](https://github.com/mergi72/dms-provider-installer/releases/tag/v0.3.3-alpha)
 
 Total Commander x64 filesystem plugin for browsing and transferring files through a local `dms-provider-bridge` instance.
@@ -16,6 +16,7 @@ Use it to access document repositories exposed by the bridge, such as Alfresco o
 - Rename, move, copy, delete, and create folders.
 - Use version-aware uploads when the bridge reports that an existing document needs a new version.
 - Use the same version choice flow for provider-to-provider copy/move into an existing versioned document.
+- Localize plugin prompts from `config/localize.json` using the current Total Commander language, with English fallback.
 - Resolve user credentials through `credential-broker` when configured.
 - Load runtime settings from `config.json` next to the plugin.
 
@@ -66,7 +67,7 @@ Stable release branch: `main`
 
 Current release mapping:
 
-- Plugin repository latest changelog version: `0.2.5`
+- Plugin repository latest changelog version: `0.2.6`
 - Latest orchestrator installer release: `dms-provider-installer v0.3.3-alpha`
 - Current tested bridge release: `dms-provider-bridge v0.4.20`
 - Current credential broker release: `credential-broker v0.2.9`
@@ -102,7 +103,7 @@ Current intended flow:
 
 ## Release Notes
 
-- See `CHANGELOG.md` for release history and `v0.2.5` notes.
+- See `CHANGELOG.md` for release history and `v0.2.6` notes.
 - For first external testing scope, see `RELEASE_NOTES_v0.1.0-alpha.md`.
 
 ## License

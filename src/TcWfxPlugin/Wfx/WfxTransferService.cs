@@ -95,7 +95,7 @@ internal sealed class WfxTransferService
 
         var auth = _authProvider.GetAuthContext();
         var response = await _facade.RenameAsync(sourceProviderPath, destinationProviderPath, auth, versioning: null, cancellationToken);
-        response = await RetryMoveWhenVersionRequiredAsync(
+        var retryResult = await RetryMoveWhenVersionRequiredAsync(
             response,
             operation,
             moveOperation: "move",
@@ -104,6 +104,13 @@ internal sealed class WfxTransferService
             fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
             retry: (versioning, ct) => _facade.RenameAsync(sourceProviderPath, destinationProviderPath, auth, versioning, ct),
             cancellationToken);
+        if (retryResult.Canceled)
+        {
+            operation.Finish(false);
+            return WfxResultCodes.UserAbort;
+        }
+
+        response = retryResult.Response;
         operation.Finish(response.Ok);
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
@@ -134,7 +141,7 @@ internal sealed class WfxTransferService
 
         var auth = _authProvider.GetAuthContext();
         var response = await _facade.CopyAsync(sourceProviderPath, destinationProviderPath, auth, versioning: null, cancellationToken);
-        response = await RetryMoveWhenVersionRequiredAsync(
+        var retryResult = await RetryMoveWhenVersionRequiredAsync(
             response,
             operation,
             moveOperation: "copy",
@@ -143,6 +150,13 @@ internal sealed class WfxTransferService
             fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
             retry: (versioning, ct) => _facade.CopyAsync(sourceProviderPath, destinationProviderPath, auth, versioning, ct),
             cancellationToken);
+        if (retryResult.Canceled)
+        {
+            operation.Finish(false);
+            return WfxResultCodes.UserAbort;
+        }
+
+        response = retryResult.Response;
         operation.Finish(response.Ok);
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
@@ -385,6 +399,12 @@ internal sealed class WfxTransferService
                 operation.ReportDiagnostic(
                     $"upload_version_retry_response ok={response.Ok} error_code={response.ErrorCode} message={SanitizeDiagnosticMessage(response.Message)} metadata={FormatMetadataKeys(response.Metadata)}");
             }
+            else
+            {
+                operation.ReportDiagnostic($"upload_version_canceled file={fileName} destination={uploadDestinationProviderPath}");
+                operation.Finish(false, Interlocked.Read(ref reportedUploadBytes));
+                return WfxResultCodes.UserAbort;
+            }
         }
 
         var finalBytesTransferred = response.Ok
@@ -417,7 +437,7 @@ internal sealed class WfxTransferService
             || IsVersionRequiredMessage(response.Message);
     }
 
-    private async Task<WfxResponse<JsonElement>> RetryMoveWhenVersionRequiredAsync(
+    private async Task<VersionRetryResult> RetryMoveWhenVersionRequiredAsync(
         WfxResponse<JsonElement> response,
         IWfxProgressReporter operation,
         string moveOperation,
@@ -429,7 +449,7 @@ internal sealed class WfxTransferService
     {
         if (!IsVersionRequiredResponse(response))
         {
-            return response;
+            return new VersionRetryResult(false, response);
         }
 
         operation.ReportDiagnostic($"{moveOperation}_version_required file={fileName} destination={destinationPath}");
@@ -443,14 +463,17 @@ internal sealed class WfxTransferService
 
         if (versioning is null)
         {
-            return response;
+            operation.ReportDiagnostic($"{moveOperation}_version_canceled file={fileName} destination={destinationPath}");
+            return new VersionRetryResult(true, response);
         }
 
         var retryResponse = await retry(versioning, cancellationToken);
         operation.ReportDiagnostic(
             $"{moveOperation}_version_retry_response ok={retryResponse.Ok} error_code={retryResponse.ErrorCode} message={SanitizeDiagnosticMessage(retryResponse.Message)} metadata={FormatMetadataKeys(retryResponse.Metadata)}");
-        return retryResponse;
+        return new VersionRetryResult(false, retryResponse);
     }
+
+    private readonly record struct VersionRetryResult(bool Canceled, WfxResponse<JsonElement> Response);
 
     private static bool IsVersionRequiredMessage(string? message)
     {
