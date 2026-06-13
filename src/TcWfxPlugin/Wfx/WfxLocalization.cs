@@ -2,15 +2,9 @@ using System.Text.Json;
 
 namespace TcWfxPlugin.Wfx;
 
-public enum WfxDialogLanguage
-{
-    English,
-    Czech,
-}
-
 internal sealed class WfxLocalization
 {
-    private const string English = "en";
+    private const string Fallback = "fallback";
     private readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> _texts;
     private readonly Func<string?> _languageProvider;
 
@@ -86,10 +80,9 @@ internal sealed class WfxLocalization
         return new WfxLocalization(LoadTexts(), languageProvider);
     }
 
-    public static WfxLocalization For(WfxDialogLanguage language)
+    public static WfxLocalization ForLanguageId(string? languageId)
     {
-        var languageCode = language == WfxDialogLanguage.Czech ? "cs" : English;
-        return new WfxLocalization(LoadTexts(), () => languageCode);
+        return new WfxLocalization(LoadTexts(), () => languageId);
     }
 
     private string FormatVersion(string? version, string? versionType)
@@ -123,9 +116,9 @@ internal sealed class WfxLocalization
             return localizedValue;
         }
 
-        if (_texts.TryGetValue(English, out var english) && english.TryGetValue(key, out var englishValue))
+        if (_texts.TryGetValue(Fallback, out var fallback) && fallback.TryGetValue(key, out var fallbackValue))
         {
-            return englishValue;
+            return fallbackValue;
         }
 
         return key;
@@ -135,21 +128,10 @@ internal sealed class WfxLocalization
     {
         if (string.IsNullOrWhiteSpace(language))
         {
-            return English;
+            return Fallback;
         }
 
-        var normalized = language.Trim().ToLowerInvariant();
-        if (normalized.StartsWith("cs", StringComparison.Ordinal) || normalized.StartsWith("cz", StringComparison.Ordinal))
-        {
-            return "cs";
-        }
-
-        if (normalized.Contains("wcmd_cz", StringComparison.Ordinal) || normalized.Contains("czech", StringComparison.Ordinal))
-        {
-            return "cs";
-        }
-
-        return English;
+        return Path.GetFileName(language.Trim().Trim('"')).ToLowerInvariant();
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> LoadTexts()
@@ -168,7 +150,7 @@ internal sealed class WfxLocalization
             catch
             {
                 // Keep dialog text best-effort. If the external JSON is invalid,
-                // use the built-in English/Czech fallback below.
+                // use the built-in fallback below.
             }
         }
 
@@ -211,7 +193,7 @@ internal sealed class WfxLocalization
 
     private const string FallbackJson = """
 {
-  "en": {
+  "fallback": {
     "providerLoginTitle": "Provider login",
     "userNamePrompt": "User name:",
     "passwordPrompt": "Password:",

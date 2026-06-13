@@ -1,5 +1,5 @@
 {
-  "en": {
+  "fallback": {
     "providerLoginTitle": "Provider login",
     "userNamePrompt": "User name:",
     "passwordPrompt": "Password:",
@@ -13,7 +13,7 @@
     "sourceTargetVersionLines": "Source version: {sourceVersion}\\nTarget version: {targetVersion}\\n",
     "unknownVersion": "unknown"
   },
-  "cs": {
+  "wcmd_cz.lng": {
     "providerLoginTitle": "P\u0159ihl\u00e1\u0161en\u00ed k provideru",
     "userNamePrompt": "U\u017eivatelsk\u00e9 jm\u00e9no:",
     "passwordPrompt": "Heslo:",
@@ -26,5 +26,33 @@
     "currentVersionLine": "Aktu\u00e1ln\u00ed verze: {version}{versionTypeSuffix}\\n",
     "sourceTargetVersionLines": "Zdrojov\u00e1 verze: {sourceVersion}\\nC\u00edlov\u00e1 verze: {targetVersion}\\n",
     "unknownVersion": "nezn\u00e1m\u00e1"
+  },
+  "wcmd_deu.lng": {
+    "providerLoginTitle": "Provider-Anmeldung",
+    "userNamePrompt": "Benutzername:",
+    "passwordPrompt": "Passwort:",
+    "rememberLoginTitle": "Anmeldung speichern",
+    "rememberLoginQuestion": "Anmeldedaten f\u00fcr Provider Bridge speichern?",
+    "overwriteTitle": "Vorhandene Datei \u00fcberschreiben",
+    "overwriteQuestion": "Datei ist bereits vorhanden:\\n{path}\\n\\n\u00dcberschreiben?",
+    "versioningTitle": "Neue Version hochladen",
+    "versionConflictText": "Dokument ist bereits vorhanden:\\n{fileName}\\n\\n{versionLines}Ge\u00e4ndert von: {modifiedBy}\\nGe\u00e4ndert am: {modifiedAt}\\n\\nQuellinhalt als neue Zielversion hochladen?\\n\\nJa = neue HAUPTVERSION des Ziels {nextMajorVersion}\\nNein = neue NEBENVERSION des Ziels {nextMinorVersion}\\nAbbrechen = nichts tun",
+    "currentVersionLine": "Aktuelle Version: {version}{versionTypeSuffix}\\n",
+    "sourceTargetVersionLines": "Quellversion: {sourceVersion}\\nZielversion: {targetVersion}\\n",
+    "unknownVersion": "unbekannt"
+  },
+  "wcmd_pol.lng": {
+    "providerLoginTitle": "Logowanie do providera",
+    "userNamePrompt": "Nazwa u\u017cytkownika:",
+    "passwordPrompt": "Has\u0142o:",
+    "rememberLoginTitle": "Zapami\u0119taj logowanie",
+    "rememberLoginQuestion": "Zapami\u0119ta\u0107 dane logowania dla Provider Bridge?",
+    "overwriteTitle": "Nadpisa\u0107 istniej\u0105cy plik",
+    "overwriteQuestion": "Plik ju\u017c istnieje:\\n{path}\\n\\nNadpisa\u0107?",
+    "versioningTitle": "Prze\u015blij now\u0105 wersj\u0119",
+    "versionConflictText": "Dokument ju\u017c istnieje:\\n{fileName}\\n\\n{versionLines}Zmodyfikowa\u0142: {modifiedBy}\\nZmodyfikowano: {modifiedAt}\\n\\nPrzes\u0142a\u0107 zawarto\u015b\u0107 \u017ar\u00f3d\u0142ow\u0105 jako now\u0105 wersj\u0119 dokumentu docelowego?\\n\\nTak = nowa WERSJA G\u0141\u00d3WNA celu {nextMajorVersion}\\nNie = nowa WERSJA POBOCZNA celu {nextMinorVersion}\\nAnuluj = nic nie r\u00f3b",
+    "currentVersionLine": "Aktualna wersja: {version}{versionTypeSuffix}\\n",
+    "sourceTargetVersionLines": "Wersja \u017ar\u00f3d\u0142owa: {sourceVersion}\\nWersja docelowa: {targetVersion}\\n",
+    "unknownVersion": "nieznana"
   }
 }

@@ -13,7 +13,7 @@ public sealed class TcDialogVersioningDecisionProviderTests
         {
             capturedText = text;
             return WfxVersioningDialogChoice.Minor;
-        }, WfxDialogLanguage.English);
+        }, "fallback");
 
         var result = provider.ChooseVersioning(new WfxVersioningRequest
         {
@@ -42,7 +42,7 @@ public sealed class TcDialogVersioningDecisionProviderTests
         {
             capturedText = text;
             return WfxVersioningDialogChoice.Minor;
-        }, WfxDialogLanguage.English);
+        }, "fallback");
 
         var result = provider.ChooseVersioning(new WfxVersioningRequest
         {
@@ -72,7 +72,7 @@ public sealed class TcDialogVersioningDecisionProviderTests
     [Fact]
     public void ChooseVersioning_WhenDialogIsCanceled_ReturnsNull()
     {
-        var provider = new TcDialogVersioningDecisionProvider((_, _) => WfxVersioningDialogChoice.Cancel, WfxDialogLanguage.English);
+        var provider = new TcDialogVersioningDecisionProvider((_, _) => WfxVersioningDialogChoice.Cancel, "fallback");
 
         var result = provider.ChooseVersioning(new WfxVersioningRequest
         {
@@ -98,7 +98,7 @@ public sealed class TcDialogVersioningDecisionProviderTests
             capturedTitle = title;
             capturedText = text;
             return WfxVersioningDialogChoice.Major;
-        }, WfxDialogLanguage.Czech);
+        }, "wcmd_cz.lng");
 
         var result = provider.ChooseVersioning(new WfxVersioningRequest
         {

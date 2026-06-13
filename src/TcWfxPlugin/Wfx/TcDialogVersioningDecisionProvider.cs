@@ -10,19 +10,19 @@ public sealed class TcDialogVersioningDecisionProvider : IWfxVersioningDecisionP
 
     public TcDialogVersioningDecisionProvider(
         Func<string, string, WfxVersioningDialogChoice> requestVersioningChoice,
-        WfxDialogLanguage language)
-        : this(requestVersioningChoice, languageProvider: null, language)
+        string languageId)
+        : this(requestVersioningChoice, languageProvider: null, languageId)
     {
     }
 
     public TcDialogVersioningDecisionProvider(
         Func<string, string, WfxVersioningDialogChoice> requestVersioningChoice,
         Func<string?>? languageProvider = null,
-        WfxDialogLanguage? language = null)
+        string? languageId = null)
     {
         _requestVersioningChoice = requestVersioningChoice;
-        _text = language.HasValue
-            ? WfxLocalization.For(language.Value)
+        _text = languageId is not null
+            ? WfxLocalization.ForLanguageId(languageId)
             : WfxLocalization.Current(languageProvider ?? (() => null));
     }
 

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.7] - 2026-06-13
+
+### Added
+
+- Added German and Polish dialog text entries to `config/localize.json`.
+
+### Changed
+
+- Localization now resolves dialog text by Total Commander `LanguageIni` id from `localize.json`, with a generic `fallback` entry when the TC language id is not configured.
+- Removed hardcoded language mapping from the WFX localization layer.
+
 ## [0.2.6] - 2026-06-13
 
 ### Added

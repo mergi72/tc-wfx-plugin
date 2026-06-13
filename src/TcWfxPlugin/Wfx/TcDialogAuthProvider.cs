@@ -21,15 +21,15 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
         string credentialTarget,
         ICredentialBrokerClient? credentialBrokerClient = null,
         Func<string?>? languageProvider = null,
-        WfxDialogLanguage? language = null)
+        string? languageId = null)
     {
         _requestValue = requestValue;
         _requestYesNo = requestYesNo;
         _credentialStore = credentialStore;
         _credentialTarget = credentialTarget;
         _credentialBrokerClient = credentialBrokerClient;
-        _text = language.HasValue
-            ? WfxLocalization.For(language.Value)
+        _text = languageId is not null
+            ? WfxLocalization.ForLanguageId(languageId)
             : WfxLocalization.Current(languageProvider ?? (() => null));
     }
 
