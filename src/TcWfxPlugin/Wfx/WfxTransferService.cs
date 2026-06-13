@@ -93,7 +93,17 @@ internal sealed class WfxTransferService
             return WfxResultCodes.FileNotFound;
         }
 
-        var response = await _facade.RenameAsync(sourceProviderPath, destinationProviderPath, _authProvider.GetAuthContext(), cancellationToken);
+        var auth = _authProvider.GetAuthContext();
+        var response = await _facade.RenameAsync(sourceProviderPath, destinationProviderPath, auth, versioning: null, cancellationToken);
+        response = await RetryMoveWhenVersionRequiredAsync(
+            response,
+            operation,
+            moveOperation: "move",
+            sourcePath: totalCommanderSourcePath,
+            destinationPath: totalCommanderDestinationPath,
+            fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
+            retry: (versioning, ct) => _facade.RenameAsync(sourceProviderPath, destinationProviderPath, auth, versioning, ct),
+            cancellationToken);
         operation.Finish(response.Ok);
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
@@ -122,7 +132,17 @@ internal sealed class WfxTransferService
             return WfxResultCodes.FileNotFound;
         }
 
-        var response = await _facade.CopyAsync(sourceProviderPath, destinationProviderPath, _authProvider.GetAuthContext(), cancellationToken);
+        var auth = _authProvider.GetAuthContext();
+        var response = await _facade.CopyAsync(sourceProviderPath, destinationProviderPath, auth, versioning: null, cancellationToken);
+        response = await RetryMoveWhenVersionRequiredAsync(
+            response,
+            operation,
+            moveOperation: "copy",
+            sourcePath: totalCommanderSourcePath,
+            destinationPath: totalCommanderDestinationPath,
+            fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
+            retry: (versioning, ct) => _facade.CopyAsync(sourceProviderPath, destinationProviderPath, auth, versioning, ct),
+            cancellationToken);
         operation.Finish(response.Ok);
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
@@ -395,6 +415,41 @@ internal sealed class WfxTransferService
 
         return string.Equals(action.GetString(), "version_required", StringComparison.OrdinalIgnoreCase)
             || IsVersionRequiredMessage(response.Message);
+    }
+
+    private async Task<WfxResponse<JsonElement>> RetryMoveWhenVersionRequiredAsync(
+        WfxResponse<JsonElement> response,
+        IWfxProgressReporter operation,
+        string moveOperation,
+        string sourcePath,
+        string destinationPath,
+        string fileName,
+        Func<WfxUploadVersioning, CancellationToken, Task<WfxResponse<JsonElement>>> retry,
+        CancellationToken cancellationToken)
+    {
+        if (!IsVersionRequiredResponse(response))
+        {
+            return response;
+        }
+
+        operation.ReportDiagnostic($"{moveOperation}_version_required file={fileName} destination={destinationPath}");
+        var versioning = _versioningDecisionProvider?.ChooseVersioning(new WfxVersioningRequest
+        {
+            SourcePath = sourcePath,
+            DestinationPath = destinationPath,
+            FileName = fileName,
+            Metadata = response.Metadata,
+        });
+
+        if (versioning is null)
+        {
+            return response;
+        }
+
+        var retryResponse = await retry(versioning, cancellationToken);
+        operation.ReportDiagnostic(
+            $"{moveOperation}_version_retry_response ok={retryResponse.Ok} error_code={retryResponse.ErrorCode} message={SanitizeDiagnosticMessage(retryResponse.Message)} metadata={FormatMetadataKeys(retryResponse.Metadata)}");
+        return retryResponse;
     }
 
     private static bool IsVersionRequiredMessage(string? message)

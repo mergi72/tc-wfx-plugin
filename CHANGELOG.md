@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.5] - 2026-06-13
+
+### Added
+
+- Provider-to-provider copy/move now handles bridge `version_required` responses with the same version choice flow as local-to-provider uploads.
+
+### Changed
+
+- Copy/move requests can send upload `versioning` data when retrying after a destination document version prompt.
+
 ## [0.2.4] - 2026-06-12
 
 ### Changed

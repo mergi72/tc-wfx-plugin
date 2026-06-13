@@ -94,7 +94,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             cancellationToken);
     }
 
-    public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)
+    public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
     {
         return PostAsync(
             "bridge/wfx/move",
@@ -103,13 +103,14 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
                 Source = source,
                 Destination = destination,
                 Auth = auth,
+                Versioning = versioning,
             },
             SerializerContext.WfxMoveRequest,
             SerializerContext.WfxResponseJsonElement,
             cancellationToken);
     }
 
-    public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)
+    public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
     {
         return PostAsync(
             "bridge/wfx/copy",
@@ -118,6 +119,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
                 Source = source,
                 Destination = destination,
                 Auth = auth,
+                Versioning = versioning,
             },
             SerializerContext.WfxMoveRequest,
             SerializerContext.WfxResponseJsonElement,

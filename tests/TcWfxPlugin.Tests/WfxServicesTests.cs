@@ -733,6 +733,95 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
+    public async Task Runtime_Copy_WhenBridgeRequiresVersion_RetriesWithSelectedVersioningWithoutAuthReset()
+    {
+        var versionRequiredResponse = new WfxResponse<JsonElement>
+        {
+            Ok = false,
+            ErrorCode = 5,
+            Message = "Alfresco document already exists and requires version choice.",
+            Data = JsonDocument.Parse("null").RootElement.Clone(),
+            Metadata = new Dictionary<string, JsonElement>
+            {
+                ["action"] = JsonDocument.Parse("\"version_required\"").RootElement.Clone(),
+                ["current_version"] = JsonDocument.Parse("\"1.4\"").RootElement.Clone(),
+            },
+        };
+        var client = new FakeBridgeClient
+        {
+            CopyResponses = new Queue<WfxResponse<JsonElement>>(
+            [
+                versionRequiredResponse,
+                JsonResponse(true, "{\"metadata\":{\"action\":\"version\"}}"),
+            ]),
+        };
+        var authProvider = new SwitchingAuthProvider(
+            new BridgeAuthContext { Mode = "credentials", Username = "first-user", Password = "pass" },
+            new BridgeAuthContext { Mode = "credentials", Username = "second-user", Password = "pass" });
+        var versioningProvider = new FixedVersioningDecisionProvider(new WfxUploadVersioning
+        {
+            Mode = "version",
+            MajorVersion = true,
+            Comment = "TC copy",
+        });
+
+        var runtime = CreateRuntime(client, authProvider, versioningProvider);
+        var result = await runtime.CopyAsync("\\edocat\\source.txt", "\\alfresco\\target.txt");
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(0, authProvider.ResetCount);
+        Assert.Equal(1, versioningProvider.CallCount);
+        Assert.NotNull(versioningProvider.LastRequest);
+        Assert.Equal("target.txt", versioningProvider.LastRequest.FileName);
+        Assert.NotNull(client.LastCopyVersioning);
+        Assert.True(client.LastCopyVersioning.MajorVersion);
+        Assert.Equal("TC copy", client.LastCopyVersioning.Comment);
+    }
+
+    [Fact]
+    public async Task Runtime_Move_WhenBridgeRequiresVersion_RetriesWithSelectedVersioningWithoutAuthReset()
+    {
+        var versionRequiredResponse = new WfxResponse<JsonElement>
+        {
+            Ok = false,
+            ErrorCode = 5,
+            Message = "Alfresco document already exists and requires version choice.",
+            Data = JsonDocument.Parse("null").RootElement.Clone(),
+            Metadata = new Dictionary<string, JsonElement>
+            {
+                ["action"] = JsonDocument.Parse("\"version_required\"").RootElement.Clone(),
+            },
+        };
+        var client = new FakeBridgeClient
+        {
+            RenameResponses = new Queue<WfxResponse<JsonElement>>(
+            [
+                versionRequiredResponse,
+                JsonResponse(true, "{\"metadata\":{\"action\":\"version\"}}"),
+            ]),
+        };
+        var authProvider = new SwitchingAuthProvider(
+            new BridgeAuthContext { Mode = "credentials", Username = "first-user", Password = "pass" },
+            new BridgeAuthContext { Mode = "credentials", Username = "second-user", Password = "pass" });
+        var versioningProvider = new FixedVersioningDecisionProvider(new WfxUploadVersioning
+        {
+            Mode = "version",
+            MajorVersion = false,
+            Comment = "TC move",
+        });
+
+        var runtime = CreateRuntime(client, authProvider, versioningProvider);
+        var result = await runtime.RenameAsync("\\edocat\\source.txt", "\\alfresco\\target.txt");
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(0, authProvider.ResetCount);
+        Assert.Equal(1, versioningProvider.CallCount);
+        Assert.NotNull(client.LastRenameVersioning);
+        Assert.False(client.LastRenameVersioning.MajorVersion);
+        Assert.Equal("TC move", client.LastRenameVersioning.Comment);
+    }
+
+    [Fact]
     public async Task Runtime_FindFirst_AccessDenied_RetriesAfterAuthReset()
     {
         var client = new FakeBridgeClient
@@ -839,6 +928,12 @@ public sealed class WfxServicesTests
         return new WfxPluginRuntime(facade, authProvider, () => DateTime.UtcNow);
     }
 
+    private static WfxPluginRuntime CreateRuntime(FakeBridgeClient bridgeClient, IWfxAuthProvider authProvider, IWfxVersioningDecisionProvider versioningDecisionProvider)
+    {
+        var facade = new WfxPluginFacade(bridgeClient);
+        return new WfxPluginRuntime(facade, authProvider, () => DateTime.UtcNow, versioningDecisionProvider: versioningDecisionProvider);
+    }
+
     private static StaticAuthProvider CreateAuthProvider()
     {
         return new StaticAuthProvider(new BridgeAuthContext
@@ -927,6 +1022,10 @@ public sealed class WfxServicesTests
         public string? LastUploadSourcePath { get; private set; }
         public bool LastUploadOverwrite { get; private set; }
         public WfxUploadVersioning? LastUploadVersioning { get; private set; }
+        public WfxUploadVersioning? LastRenameVersioning { get; private set; }
+        public WfxUploadVersioning? LastCopyVersioning { get; private set; }
+        public Queue<WfxResponse<JsonElement>>? RenameResponses { get; set; }
+        public Queue<WfxResponse<JsonElement>>? CopyResponses { get; set; }
         public Queue<WfxResponse<JsonElement>>? UploadResponses { get; set; }
         public IReadOnlyList<long>? UploadProgressOffsets { get; set; }
         public bool BlockDownloadUntilCanceled { get; set; }
@@ -959,11 +1058,27 @@ public sealed class WfxServicesTests
             return Task.FromResult(DeleteResponder is not null ? DeleteResponder(auth) : DeleteResponse);
         }
 
-        public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)
-            => Task.FromResult(RenameResponse);
+        public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+        {
+            LastRenameVersioning = versioning;
+            if (RenameResponses is { Count: > 0 })
+            {
+                return Task.FromResult(RenameResponses.Dequeue());
+            }
 
-        public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, CancellationToken cancellationToken = default)
-            => Task.FromResult(CopyResponse);
+            return Task.FromResult(RenameResponse);
+        }
+
+        public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+        {
+            LastCopyVersioning = versioning;
+            if (CopyResponses is { Count: > 0 })
+            {
+                return Task.FromResult(CopyResponses.Dequeue());
+            }
+
+            return Task.FromResult(CopyResponse);
+        }
 
         public async Task<WfxResponse<JsonElement>> DownloadAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
         {
