@@ -1,5 +1,6 @@
 # tc-wfx-plugin
 
+[![CI](https://github.com/mergi72/tc-wfx-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/mergi72/tc-wfx-plugin/actions/workflows/ci.yml)
 [![Status](https://img.shields.io/badge/Status-Beta-yellowgreen)](https://github.com/mergi72/tc-wfx-plugin)
 [![Plugin Version](https://img.shields.io/badge/Plugin-v0.5.0--beta-blue)](https://github.com/mergi72/tc-wfx-plugin)
 [![Installer Release](https://img.shields.io/badge/Installer-v0.5.0--beta-blueviolet)](https://github.com/mergi72/dms-provider-installer/releases/tag/v0.5.0-beta)
