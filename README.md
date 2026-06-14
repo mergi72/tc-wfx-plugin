@@ -1,8 +1,8 @@
 # tc-wfx-plugin
 
-[![Status](https://img.shields.io/badge/Status-Alpha-orange)](https://github.com/mergi72/tc-wfx-plugin)
-[![Plugin Version](https://img.shields.io/badge/Plugin-v0.2.7-blue)](https://github.com/mergi72/tc-wfx-plugin)
-[![Installer Release](https://img.shields.io/badge/Installer-v0.3.4--alpha-blueviolet)](https://github.com/mergi72/dms-provider-installer/releases/tag/v0.3.4-alpha)
+[![Status](https://img.shields.io/badge/Status-Beta-yellowgreen)](https://github.com/mergi72/tc-wfx-plugin)
+[![Plugin Version](https://img.shields.io/badge/Plugin-v0.5.0--beta-blue)](https://github.com/mergi72/tc-wfx-plugin)
+[![Installer Release](https://img.shields.io/badge/Installer-v0.5.0--beta-blueviolet)](https://github.com/mergi72/dms-provider-installer/releases/tag/v0.5.0-beta)
 
 Total Commander x64 filesystem plugin for browsing and transferring files through a local `dms-provider-bridge` instance.
 
@@ -67,10 +67,10 @@ Stable release branch: `main`
 
 Current release mapping:
 
-- Plugin repository latest changelog version: `0.2.7`
-- Latest orchestrator installer release: `dms-provider-installer v0.3.4-alpha`
-- Current tested bridge release: `dms-provider-bridge v0.4.21`
-- Current credential broker release: `credential-broker v0.2.9`
+- Plugin repository latest changelog version: `0.5.0-beta`
+- Latest orchestrator installer release: `dms-provider-installer v0.5.0-beta`
+- Current tested bridge release: `dms-provider-bridge v0.5.0-beta`
+- Current credential broker release: `credential-broker v0.5.0-beta`
 
 ## Related Projects
 
@@ -103,7 +103,7 @@ Current intended flow:
 
 ## Release Notes
 
-- See `CHANGELOG.md` for release history and `v0.2.7` notes.
+- See `CHANGELOG.md` for release history and `v0.5.0-beta` notes.
 - For first external testing scope, see `RELEASE_NOTES_v0.1.0-alpha.md`.
 
 ## License

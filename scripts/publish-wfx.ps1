@@ -25,6 +25,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE"
 }
 
+$publishedDllPath = Join-Path $outputPath "TcWfxPlugin.dll"
+$publishedWfxPath = Join-Path $outputPath "TcWfxPlugin.wfx64"
+if (-not (Test-Path $publishedDllPath)) {
+    throw "Published plugin DLL not found: $publishedDllPath"
+}
+Copy-Item -Path $publishedDllPath -Destination $publishedWfxPath -Force
+Write-Host "Copied native plugin to: $publishedWfxPath"
+
 if (Test-Path $configTemplatePath) {
     $outputRootConfigPath = Join-Path $outputPath "config.json"
     Copy-Item -Path $configTemplatePath -Destination $outputRootConfigPath -Force

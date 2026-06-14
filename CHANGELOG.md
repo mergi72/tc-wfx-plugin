@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0-beta] - 2026-06-14
+
+### Changed
+
+- Beta release candidate for external Total Commander testing.
+- Includes version-aware local/provider uploads, provider-to-provider copy/move version prompts, localized dialogs, and broker-backed credential flow.
+
 ## [0.2.7] - 2026-06-13
 
 ### Added
