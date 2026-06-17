@@ -9,6 +9,28 @@ namespace TcWfxPlugin.Tests;
 public sealed class WfxBridgeClientTests
 {
     [Fact]
+    public async Task GetProvidersAsync_UsesBridgeConnectionsEndpoint()
+    {
+        var handler = new QueueHttpMessageHandler(
+            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"status\":\"ok\",\"service\":\"dms-provider-bridge\",\"version\":\"0.7.0-beta\"}"),
+            HttpResponseMessageForJson(HttpStatusCode.OK, "{\"ok\":true,\"error_code\":0,\"message\":null,\"data\":{\"connection_names\":[\"alfresco\",\"edocat\"],\"default_connection\":\"alfresco\",\"connections\":[],\"available_drivers\":[\"alfresco\",\"edocat\"]}}"));
+
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://127.0.0.1:8765/"),
+        };
+
+        var client = new WfxBridgeClient(httpClient);
+        var result = await client.GetProvidersAsync();
+
+        Assert.True(result.Ok);
+        Assert.NotNull(result.Data);
+        Assert.Equal(["alfresco", "edocat"], result.Data!.Providers);
+        Assert.Equal("alfresco", result.Data.DefaultProvider);
+        Assert.EndsWith("/bridge/wfx/connections", handler.Requests[^1].RequestUri?.AbsolutePath, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DownloadRawAsync_WhenBridgeReturnsJsonEnvelope_ReturnsFailureWithNonZeroErrorCode()
     {
         var handler = new QueueHttpMessageHandler(
@@ -237,11 +259,14 @@ public sealed class WfxBridgeClientTests
     private sealed class QueueHttpMessageHandler : HttpMessageHandler
     {
         private readonly Queue<HttpResponseMessage> _responses;
+        private readonly List<HttpRequestMessage> _requests = [];
 
         public QueueHttpMessageHandler(params HttpResponseMessage[] responses)
         {
             _responses = new Queue<HttpResponseMessage>(responses);
         }
+
+        public IReadOnlyList<HttpRequestMessage> Requests => _requests;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -250,6 +275,7 @@ public sealed class WfxBridgeClientTests
                 throw new InvalidOperationException($"No queued response for request {request.Method} {request.RequestUri}.");
             }
 
+            _requests.Add(request);
             var response = _responses.Dequeue();
             response.RequestMessage = request;
             if (response.Content is not null && response.Content.Headers.ContentType is null)

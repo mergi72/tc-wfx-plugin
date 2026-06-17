@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1-beta] - 2026-06-17
+
+### Changed
+
+- Root listing now resolves bridge connections from `GET /bridge/wfx/connections`.
+- Bridge smoke validation now checks the connection discovery contract used by `dms-provider-bridge` `0.7.1-beta`.
+
 ## [0.5.0-beta] - 2026-06-14
 
 ### Changed

@@ -82,14 +82,14 @@ try {
         throw "Bridge did not become healthy in time."
     }
 
-    $providers = Invoke-RestMethod -Method Get -Uri "$bridgeUrl/bridge/wfx/providers"
-    if (-not $providers.ok) {
-        throw "Providers endpoint returned ok=false"
+    $connections = Invoke-RestMethod -Method Get -Uri "$bridgeUrl/bridge/wfx/connections"
+    if (-not $connections.ok) {
+        throw "Connections endpoint returned ok=false"
     }
 
-    $hasFso = @($providers.data.providers) -contains "fso"
+    $hasFso = @($connections.data.connection_names) -contains "fso"
     if (-not $hasFso) {
-        throw "Providers endpoint did not include fso provider."
+        throw "Connections endpoint did not include fso connection."
     }
 
     $listBody = @{
@@ -183,7 +183,7 @@ try {
         }
     }
 
-    Write-Host "Smoke test passed. Providers, list endpoint, and large raw upload are operational."
+    Write-Host "Smoke test passed. Connections, list endpoint, and large raw upload are operational."
 }
 finally {
     if ($serverProcess -and -not $serverProcess.HasExited) {

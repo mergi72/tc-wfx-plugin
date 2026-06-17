@@ -47,7 +47,9 @@ public sealed class WfxItemDto
 
 public sealed class WfxProvidersData
 {
+    [JsonPropertyName("connection_names")]
     public required IReadOnlyList<string> Providers { get; init; }
+    [JsonPropertyName("default_connection")]
     public string? DefaultProvider { get; init; }
     public Dictionary<string, WfxProviderCapabilities>? Capabilities { get; init; }
 }

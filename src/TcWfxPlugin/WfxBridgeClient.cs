@@ -49,7 +49,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
     public Task<WfxResponse<WfxProvidersData>> GetProvidersAsync(CancellationToken cancellationToken = default)
     {
         return GetAsync(
-            "bridge/wfx/providers",
+            "bridge/wfx/connections",
             SerializerContext.WfxResponseWfxProvidersData,
             cancellationToken);
     }
