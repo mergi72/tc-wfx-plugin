@@ -93,8 +93,9 @@ internal sealed class WfxTransferService
             return WfxResultCodes.FileNotFound;
         }
 
-        var auth = AuthForProviderPath(destinationProviderPath);
-        var response = await _facade.RenameAsync(sourceProviderPath, destinationProviderPath, auth, versioning: null, cancellationToken);
+        var sourceAuth = AuthForProviderPath(sourceProviderPath);
+        var destinationAuth = AuthForProviderPath(destinationProviderPath);
+        var response = await _facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, versioning: null, cancellationToken);
         var retryResult = await RetryMoveWhenVersionRequiredAsync(
             response,
             operation,
@@ -102,7 +103,7 @@ internal sealed class WfxTransferService
             sourcePath: totalCommanderSourcePath,
             destinationPath: totalCommanderDestinationPath,
             fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
-            retry: (versioning, ct) => _facade.RenameAsync(sourceProviderPath, destinationProviderPath, auth, versioning, ct),
+            retry: (versioning, ct) => _facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, versioning, ct),
             cancellationToken);
         if (retryResult.Canceled)
         {
@@ -139,8 +140,9 @@ internal sealed class WfxTransferService
             return WfxResultCodes.FileNotFound;
         }
 
-        var auth = AuthForProviderPath(destinationProviderPath);
-        var response = await _facade.CopyAsync(sourceProviderPath, destinationProviderPath, auth, versioning: null, cancellationToken);
+        var sourceAuth = AuthForProviderPath(sourceProviderPath);
+        var destinationAuth = AuthForProviderPath(destinationProviderPath);
+        var response = await _facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, versioning: null, cancellationToken);
         var retryResult = await RetryMoveWhenVersionRequiredAsync(
             response,
             operation,
@@ -148,7 +150,7 @@ internal sealed class WfxTransferService
             sourcePath: totalCommanderSourcePath,
             destinationPath: totalCommanderDestinationPath,
             fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
-            retry: (versioning, ct) => _facade.CopyAsync(sourceProviderPath, destinationProviderPath, auth, versioning, ct),
+            retry: (versioning, ct) => _facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, versioning, ct),
             cancellationToken);
         if (retryResult.Canceled)
         {

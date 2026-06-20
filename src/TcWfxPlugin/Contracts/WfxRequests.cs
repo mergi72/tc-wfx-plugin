@@ -13,6 +13,8 @@ public sealed class WfxMoveRequest
     public required string Source { get; init; }
     public required string Destination { get; init; }
     public required BridgeAuthContext Auth { get; init; }
+    public BridgeAuthContext? SourceAuth { get; init; }
+    public BridgeAuthContext? DestinationAuth { get; init; }
     public WfxUploadVersioning? Versioning { get; init; }
 }
 

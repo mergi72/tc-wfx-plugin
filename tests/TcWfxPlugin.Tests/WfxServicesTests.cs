@@ -827,6 +827,26 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
+    public async Task Runtime_Copy_BetweenConnections_SendsSourceAndDestinationAuth()
+    {
+        var client = new FakeBridgeClient
+        {
+            CopyResponse = JsonResponse(true, "{}"),
+        };
+        var authProvider = new ConnectionAuthProvider();
+
+        var runtime = CreateRuntime(client, authProvider);
+        var result = await runtime.CopyAsync("\\alfresco\\source.txt", "\\webdav\\target.txt");
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.NotNull(client.LastCopySourceAuth);
+        Assert.NotNull(client.LastCopyDestinationAuth);
+        Assert.Equal("alfresco-user", client.LastCopySourceAuth.Username);
+        Assert.Equal("webdav-user", client.LastCopyDestinationAuth.Username);
+        Assert.Equal("webdav-user", client.LastCopyAuth?.Username);
+    }
+
+    [Fact]
     public async Task Runtime_Copy_WhenVersionDialogIsCanceled_ReturnsUserAbortWithoutAuthReset()
     {
         var versionRequiredResponse = new WfxResponse<JsonElement>
@@ -1107,6 +1127,9 @@ public sealed class WfxServicesTests
         public WfxUploadVersioning? LastUploadVersioning { get; private set; }
         public WfxUploadVersioning? LastRenameVersioning { get; private set; }
         public WfxUploadVersioning? LastCopyVersioning { get; private set; }
+        public BridgeAuthContext? LastCopyAuth { get; private set; }
+        public BridgeAuthContext? LastCopySourceAuth { get; private set; }
+        public BridgeAuthContext? LastCopyDestinationAuth { get; private set; }
         public Queue<WfxResponse<JsonElement>>? RenameResponses { get; set; }
         public Queue<WfxResponse<JsonElement>>? CopyResponses { get; set; }
         public Queue<WfxResponse<JsonElement>>? UploadResponses { get; set; }
@@ -1141,7 +1164,7 @@ public sealed class WfxServicesTests
             return Task.FromResult(DeleteResponder is not null ? DeleteResponder(auth) : DeleteResponse);
         }
 
-        public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
         {
             LastRenameVersioning = versioning;
             if (RenameResponses is { Count: > 0 })
@@ -1152,8 +1175,11 @@ public sealed class WfxServicesTests
             return Task.FromResult(RenameResponse);
         }
 
-        public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
         {
+            LastCopyAuth = auth;
+            LastCopySourceAuth = sourceAuth;
+            LastCopyDestinationAuth = destinationAuth;
             LastCopyVersioning = versioning;
             if (CopyResponses is { Count: > 0 })
             {
@@ -1269,6 +1295,23 @@ public sealed class WfxServicesTests
         {
             ResetCount++;
             _useSecond = true;
+        }
+    }
+
+    private sealed class ConnectionAuthProvider : IWfxAuthProvider
+    {
+        public BridgeAuthContext GetAuthContext(string? provider = null)
+        {
+            return new BridgeAuthContext
+            {
+                Mode = "credentials",
+                Username = string.Equals(provider, "webdav", StringComparison.OrdinalIgnoreCase) ? "webdav-user" : "alfresco-user",
+                Password = "pass",
+            };
+        }
+
+        public void ResetCachedAuth()
+        {
         }
     }
 }

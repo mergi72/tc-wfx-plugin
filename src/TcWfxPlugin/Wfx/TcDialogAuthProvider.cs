@@ -65,7 +65,7 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
 
                 if (!_ignoreStoredCredentialsOnce && !hasDirectSecret && !string.IsNullOrWhiteSpace(credentialId))
                 {
-                    var brokerAuth = TryResolveViaBroker(credentialId, provider);
+                    var brokerAuth = TryResolveViaBroker(credentialId);
                     if (brokerAuth is not null)
                     {
                         return CacheAuth(cacheKey, brokerAuth);
@@ -218,7 +218,7 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
             Token = null,
         };
     }
-    private BridgeAuthContext? TryResolveViaBroker(string credentialId, string? provider)
+    private BridgeAuthContext? TryResolveViaBroker(string credentialId)
     {
         if (_credentialBrokerClient is null)
         {
@@ -232,7 +232,7 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                 Target = credentialId,
                 Required = true,
             },
-            provider);
+            provider: null);
 
         if (resolved is null || !string.Equals(resolved.Mode, "credentials", StringComparison.OrdinalIgnoreCase))
         {

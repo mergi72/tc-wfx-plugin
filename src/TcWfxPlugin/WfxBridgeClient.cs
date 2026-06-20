@@ -136,7 +136,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             cancellationToken);
     }
 
-    public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+    public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
     {
         return PostAsync(
             "bridge/wfx/move",
@@ -145,6 +145,8 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
                 Source = source,
                 Destination = destination,
                 Auth = auth,
+                SourceAuth = sourceAuth,
+                DestinationAuth = destinationAuth,
                 Versioning = versioning,
             },
             SerializerContext.WfxMoveRequest,
@@ -152,7 +154,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             cancellationToken);
     }
 
-    public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+    public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
     {
         return PostAsync(
             "bridge/wfx/copy",
@@ -161,6 +163,8 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
                 Source = source,
                 Destination = destination,
                 Auth = auth,
+                SourceAuth = sourceAuth,
+                DestinationAuth = destinationAuth,
                 Versioning = versioning,
             },
             SerializerContext.WfxMoveRequest,

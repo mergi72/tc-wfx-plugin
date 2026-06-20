@@ -75,6 +75,8 @@ public sealed class WfxPluginFacade
         string source,
         string destination,
         BridgeAuthContext auth,
+        BridgeAuthContext? sourceAuth = null,
+        BridgeAuthContext? destinationAuth = null,
         WfxUploadVersioning? versioning = null,
         CancellationToken cancellationToken = default)
     {
@@ -83,13 +85,15 @@ public sealed class WfxPluginFacade
             return Task.FromResult(WfxResponse<JsonElement>.Failed("Invalid source/destination provider path. Expected format provider:/path."));
         }
 
-        return _bridgeClient.RenameAsync(source, destination, auth, versioning, cancellationToken);
+        return _bridgeClient.RenameAsync(source, destination, auth, sourceAuth, destinationAuth, versioning, cancellationToken);
     }
 
     public Task<WfxResponse<JsonElement>> CopyAsync(
         string source,
         string destination,
         BridgeAuthContext auth,
+        BridgeAuthContext? sourceAuth = null,
+        BridgeAuthContext? destinationAuth = null,
         WfxUploadVersioning? versioning = null,
         CancellationToken cancellationToken = default)
     {
@@ -98,7 +102,7 @@ public sealed class WfxPluginFacade
             return Task.FromResult(WfxResponse<JsonElement>.Failed("Invalid source/destination provider path. Expected format provider:/path."));
         }
 
-        return _bridgeClient.CopyAsync(source, destination, auth, versioning, cancellationToken);
+        return _bridgeClient.CopyAsync(source, destination, auth, sourceAuth, destinationAuth, versioning, cancellationToken);
     }
 
     public Task<WfxResponse<JsonElement>> DownloadAsync(

@@ -390,6 +390,26 @@ public sealed class TcDialogAuthProviderTests
         }
     }
 
+    private sealed class RecordingCredentialBrokerClient : ICredentialBrokerClient
+    {
+        public int ResolveCalls { get; private set; }
+        public string? LastProvider { get; private set; }
+        public string? LastTarget { get; private set; }
+
+        public BridgeAuthContext? Resolve(CredentialBrokerAuthRequirement requirement, string? provider = null)
+        {
+            ResolveCalls++;
+            LastProvider = provider;
+            LastTarget = requirement.Target;
+            return new BridgeAuthContext
+            {
+                Mode = "credentials",
+                Username = "domain-user",
+                Password = "domain-pass",
+            };
+        }
+    }
+
     [Fact]
     public void GetAuthContext_CredentialsMode_UsesConnectionSpecificCredentialTarget()
     {
@@ -411,5 +431,51 @@ public sealed class TcDialogAuthProviderTests
 
         Assert.Equal("tc-wfx/webdav", webdav.CredentialId);
         Assert.Equal("tc-wfx/bridge", alfresco.CredentialId);
+    }
+
+    [Fact]
+    public void GetAuthContext_CredentialsMode_BrokerResolveUsesCredentialTargetNotConnectionName()
+    {
+        var oldMode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE");
+        var oldUser = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
+        var oldPassword = Environment.GetEnvironmentVariable("TC_WFX_PASSWORD");
+        var oldCredentialId = Environment.GetEnvironmentVariable("TC_WFX_CREDENTIAL_ID");
+
+        Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", "credentials");
+        Environment.SetEnvironmentVariable("TC_WFX_USERNAME", null);
+        Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", null);
+        Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", null);
+
+        try
+        {
+            var broker = new RecordingCredentialBrokerClient();
+            var provider = new TcDialogAuthProvider(
+                (_, _, _) => throw new InvalidOperationException("Prompt should not be used when broker resolves credentials."),
+                (_, _) => throw new InvalidOperationException("Yes/No prompt should not be used when broker resolves credentials."),
+                new FakeCredentialStore(),
+                "tc-wfx/bridge",
+                broker,
+                credentialTargetResolver: connection =>
+                    string.Equals(connection, "alfresco", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(connection, "alfresco1", StringComparison.OrdinalIgnoreCase)
+                        ? "tc-wfx/bridge"
+                        : null);
+
+            var alfresco = provider.GetAuthContext("alfresco");
+            var alfresco1 = provider.GetAuthContext("alfresco1");
+
+            Assert.Equal("domain-user", alfresco.Username);
+            Assert.Equal("domain-user", alfresco1.Username);
+            Assert.Equal(1, broker.ResolveCalls);
+            Assert.Null(broker.LastProvider);
+            Assert.Equal("tc-wfx/bridge", broker.LastTarget);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", oldMode);
+            Environment.SetEnvironmentVariable("TC_WFX_USERNAME", oldUser);
+            Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", oldPassword);
+            Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", oldCredentialId);
+        }
     }
 }

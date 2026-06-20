@@ -81,10 +81,10 @@ public sealed class WfxPluginFacadeTests
         public Task<WfxResponse<JsonElement>> DeleteAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
             => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
 
-        public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
             => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
 
-        public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
             => Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
 
         public Task<WfxResponse<JsonElement>> DownloadAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)

@@ -1045,13 +1045,13 @@ public sealed class WfxEntryPointsTests
             return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
         }
 
-        public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
         {
             RenameCallCount++;
             return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
         }
 
-        public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
         {
             CopyCallCount++;
             return Task.FromResult(new WfxResponse<JsonElement> { Ok = true });
