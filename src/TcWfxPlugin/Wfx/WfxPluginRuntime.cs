@@ -16,12 +16,13 @@ public sealed class WfxPluginRuntime
         IWfxAuthProvider authProvider,
         Func<DateTime>? utcNow = null,
         IWfxProgressReporterFactory? progressReporterFactory = null,
-        IWfxVersioningDecisionProvider? versioningDecisionProvider = null)
+        IWfxVersioningDecisionProvider? versioningDecisionProvider = null,
+        IWfxOverwriteDecisionProvider? overwriteDecisionProvider = null)
     {
         _authProvider = authProvider;
         var nowProvider = utcNow ?? (() => DateTime.UtcNow);
         _listingService = new WfxListingService(facade, authProvider, nowProvider);
-        _transferService = new WfxTransferService(facade, authProvider, progressReporterFactory, versioningDecisionProvider);
+        _transferService = new WfxTransferService(facade, authProvider, progressReporterFactory, versioningDecisionProvider, overwriteDecisionProvider);
         _contextManager = new WfxContextManager(nowProvider);
     }
 

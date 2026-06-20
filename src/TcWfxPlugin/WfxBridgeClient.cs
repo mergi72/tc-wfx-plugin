@@ -136,7 +136,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             cancellationToken);
     }
 
-    public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+    public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, bool overwrite = false, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
     {
         return PostAsync(
             "bridge/wfx/move",
@@ -147,6 +147,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
                 Auth = auth,
                 SourceAuth = sourceAuth,
                 DestinationAuth = destinationAuth,
+                Overwrite = overwrite,
                 Versioning = versioning,
             },
             SerializerContext.WfxMoveRequest,
@@ -154,7 +155,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             cancellationToken);
     }
 
-    public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+    public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, bool overwrite = false, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
     {
         return PostAsync(
             "bridge/wfx/copy",
@@ -165,6 +166,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
                 Auth = auth,
                 SourceAuth = sourceAuth,
                 DestinationAuth = destinationAuth,
+                Overwrite = overwrite,
                 Versioning = versioning,
             },
             SerializerContext.WfxMoveRequest,

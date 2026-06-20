@@ -827,6 +827,75 @@ public sealed class WfxServicesTests
     }
 
     [Fact]
+    public async Task Runtime_Copy_WhenBridgeRequiresOverwrite_RetriesWithOverwriteWithoutAuthReset()
+    {
+        var overwriteRequiredResponse = new WfxResponse<JsonElement>
+        {
+            Ok = false,
+            ErrorCode = 5,
+            Message = "Cross-provider copy target exists and requires overwrite choice: /target.txt",
+            Data = JsonDocument.Parse("null").RootElement.Clone(),
+            Metadata = new Dictionary<string, JsonElement>
+            {
+                ["action"] = JsonDocument.Parse("\"overwrite_required\"").RootElement.Clone(),
+            },
+        };
+        var client = new FakeBridgeClient
+        {
+            CopyResponses = new Queue<WfxResponse<JsonElement>>(
+            [
+                overwriteRequiredResponse,
+                JsonResponse(true, "{\"metadata\":{\"action\":\"overwrite\"}}"),
+            ]),
+        };
+        var authProvider = new SwitchingAuthProvider(
+            new BridgeAuthContext { Mode = "credentials", Username = "first-user", Password = "pass" },
+            new BridgeAuthContext { Mode = "credentials", Username = "second-user", Password = "pass" });
+        var overwriteProvider = new FixedOverwriteDecisionProvider(overwrite: true);
+
+        var runtime = CreateRuntime(client, authProvider, overwriteDecisionProvider: overwriteProvider);
+        var result = await runtime.CopyAsync("\\alfresco\\source.txt", "\\webdav\\target.txt");
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(0, authProvider.ResetCount);
+        Assert.Equal(1, overwriteProvider.CallCount);
+        Assert.True(client.LastCopyOverwrite);
+        Assert.Null(client.LastCopyVersioning);
+    }
+
+    [Fact]
+    public async Task Runtime_Copy_WhenOverwriteDialogIsCanceled_ReturnsUserAbortWithoutAuthReset()
+    {
+        var overwriteRequiredResponse = new WfxResponse<JsonElement>
+        {
+            Ok = false,
+            ErrorCode = 5,
+            Message = "Cross-provider copy target exists and requires overwrite choice: /target.txt",
+            Data = JsonDocument.Parse("null").RootElement.Clone(),
+            Metadata = new Dictionary<string, JsonElement>
+            {
+                ["action"] = JsonDocument.Parse("\"overwrite_required\"").RootElement.Clone(),
+            },
+        };
+        var client = new FakeBridgeClient
+        {
+            CopyResponses = new Queue<WfxResponse<JsonElement>>([overwriteRequiredResponse]),
+        };
+        var authProvider = new SwitchingAuthProvider(
+            new BridgeAuthContext { Mode = "credentials", Username = "first-user", Password = "pass" },
+            new BridgeAuthContext { Mode = "credentials", Username = "second-user", Password = "pass" });
+        var overwriteProvider = new FixedOverwriteDecisionProvider(overwrite: false);
+
+        var runtime = CreateRuntime(client, authProvider, overwriteDecisionProvider: overwriteProvider);
+        var result = await runtime.CopyAsync("\\alfresco\\source.txt", "\\webdav\\target.txt");
+
+        Assert.Equal(WfxResultCodes.UserAbort, result);
+        Assert.Equal(0, authProvider.ResetCount);
+        Assert.Equal(1, overwriteProvider.CallCount);
+        Assert.False(client.LastCopyOverwrite);
+    }
+
+    [Fact]
     public async Task Runtime_Copy_BetweenConnections_SendsSourceAndDestinationAuth()
     {
         var client = new FakeBridgeClient
@@ -1037,6 +1106,15 @@ public sealed class WfxServicesTests
         return new WfxPluginRuntime(facade, authProvider, () => DateTime.UtcNow, versioningDecisionProvider: versioningDecisionProvider);
     }
 
+    private static WfxPluginRuntime CreateRuntime(
+        FakeBridgeClient bridgeClient,
+        IWfxAuthProvider authProvider,
+        IWfxOverwriteDecisionProvider overwriteDecisionProvider)
+    {
+        var facade = new WfxPluginFacade(bridgeClient);
+        return new WfxPluginRuntime(facade, authProvider, () => DateTime.UtcNow, overwriteDecisionProvider: overwriteDecisionProvider);
+    }
+
     private static StaticAuthProvider CreateAuthProvider()
     {
         return new StaticAuthProvider(new BridgeAuthContext
@@ -1127,6 +1205,8 @@ public sealed class WfxServicesTests
         public WfxUploadVersioning? LastUploadVersioning { get; private set; }
         public WfxUploadVersioning? LastRenameVersioning { get; private set; }
         public WfxUploadVersioning? LastCopyVersioning { get; private set; }
+        public bool LastRenameOverwrite { get; private set; }
+        public bool LastCopyOverwrite { get; private set; }
         public BridgeAuthContext? LastCopyAuth { get; private set; }
         public BridgeAuthContext? LastCopySourceAuth { get; private set; }
         public BridgeAuthContext? LastCopyDestinationAuth { get; private set; }
@@ -1164,9 +1244,10 @@ public sealed class WfxServicesTests
             return Task.FromResult(DeleteResponder is not null ? DeleteResponder(auth) : DeleteResponse);
         }
 
-        public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> RenameAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, bool overwrite = false, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
         {
             LastRenameVersioning = versioning;
+            LastRenameOverwrite = overwrite;
             if (RenameResponses is { Count: > 0 })
             {
                 return Task.FromResult(RenameResponses.Dequeue());
@@ -1175,12 +1256,13 @@ public sealed class WfxServicesTests
             return Task.FromResult(RenameResponse);
         }
 
-        public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
+        public Task<WfxResponse<JsonElement>> CopyAsync(string source, string destination, BridgeAuthContext auth, BridgeAuthContext? sourceAuth = null, BridgeAuthContext? destinationAuth = null, bool overwrite = false, WfxUploadVersioning? versioning = null, CancellationToken cancellationToken = default)
         {
             LastCopyAuth = auth;
             LastCopySourceAuth = sourceAuth;
             LastCopyDestinationAuth = destinationAuth;
             LastCopyVersioning = versioning;
+            LastCopyOverwrite = overwrite;
             if (CopyResponses is { Count: > 0 })
             {
                 return Task.FromResult(CopyResponses.Dequeue());
@@ -1269,6 +1351,26 @@ public sealed class WfxServicesTests
             CallCount++;
             LastRequest = request;
             return _versioning;
+        }
+    }
+
+    private sealed class FixedOverwriteDecisionProvider : IWfxOverwriteDecisionProvider
+    {
+        private readonly bool _overwrite;
+
+        public FixedOverwriteDecisionProvider(bool overwrite)
+        {
+            _overwrite = overwrite;
+        }
+
+        public int CallCount { get; private set; }
+        public WfxOverwriteRequest? LastRequest { get; private set; }
+
+        public bool ConfirmOverwrite(WfxOverwriteRequest request)
+        {
+            CallCount++;
+            LastRequest = request;
+            return _overwrite;
         }
     }
 

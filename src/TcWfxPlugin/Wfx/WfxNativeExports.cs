@@ -22,6 +22,9 @@ public static class WfxNativeExports
     private const int TcFileUserAbort = 5;
     private const uint MessageBoxYesNoCancel = 0x00000003;
     private const uint MessageBoxIconQuestion = 0x00000020;
+    private const uint MessageBoxTaskModal = 0x00002000;
+    private const uint MessageBoxSetForeground = 0x00010000;
+    private const uint MessageBoxTopMost = 0x00040000;
     private const int MessageBoxResultYes = 6;
     private const int MessageBoxResultNo = 7;
 
@@ -489,7 +492,8 @@ public static class WfxNativeExports
             credentialTargetResolver: connection => client.ResolveCredentialTarget(connection));
         var facade = new WfxPluginFacade(client);
         var versioningProvider = new TcDialogVersioningDecisionProvider(ChooseVersioningWithCancel, GetTotalCommanderLanguageCode);
-        var runtime = new WfxPluginRuntime(facade, authProvider, versioningDecisionProvider: versioningProvider);
+        var overwriteProvider = new TcDialogOverwriteDecisionProvider(TryConfirmYesNo, GetTotalCommanderLanguageCode);
+        var runtime = new WfxPluginRuntime(facade, authProvider, versioningDecisionProvider: versioningProvider, overwriteDecisionProvider: overwriteProvider);
         runtime.TransferProgressChanged += OnTransferProgressChanged;
         return new WfxEntryPoints(runtime);
     }
@@ -719,7 +723,11 @@ public static class WfxNativeExports
     {
         try
         {
-            var result = MessageBoxW(nint.Zero, text, title, MessageBoxYesNoCancel | MessageBoxIconQuestion);
+            var result = MessageBoxW(
+                nint.Zero,
+                text,
+                title,
+                MessageBoxYesNoCancel | MessageBoxIconQuestion | MessageBoxTaskModal | MessageBoxSetForeground | MessageBoxTopMost);
             return result switch
             {
                 MessageBoxResultYes => WfxVersioningDialogChoice.Major,

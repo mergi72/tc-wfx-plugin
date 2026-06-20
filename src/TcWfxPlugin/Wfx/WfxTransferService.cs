@@ -12,17 +12,20 @@ internal sealed class WfxTransferService
     private readonly IWfxAuthProvider _authProvider;
     private readonly IWfxProgressReporterFactory _progressReporterFactory;
     private readonly IWfxVersioningDecisionProvider? _versioningDecisionProvider;
+    private readonly IWfxOverwriteDecisionProvider? _overwriteDecisionProvider;
 
     public WfxTransferService(
         WfxPluginFacade facade,
         IWfxAuthProvider authProvider,
         IWfxProgressReporterFactory? progressReporterFactory = null,
-        IWfxVersioningDecisionProvider? versioningDecisionProvider = null)
+        IWfxVersioningDecisionProvider? versioningDecisionProvider = null,
+        IWfxOverwriteDecisionProvider? overwriteDecisionProvider = null)
     {
         _facade = facade;
         _authProvider = authProvider;
         _progressReporterFactory = progressReporterFactory ?? new WfxProgressReporterFactory();
         _versioningDecisionProvider = versioningDecisionProvider;
+        _overwriteDecisionProvider = overwriteDecisionProvider;
     }
 
     public async Task<int> MkDirAsync(
@@ -95,7 +98,23 @@ internal sealed class WfxTransferService
 
         var sourceAuth = AuthForProviderPath(sourceProviderPath);
         var destinationAuth = AuthForProviderPath(destinationProviderPath);
-        var response = await _facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, versioning: null, cancellationToken);
+        var response = await _facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: false, versioning: null, cancellationToken: cancellationToken);
+        var overwriteRetryResult = await RetryMoveWhenOverwriteRequiredAsync(
+            response,
+            operation,
+            moveOperation: "move",
+            sourcePath: totalCommanderSourcePath,
+            destinationPath: totalCommanderDestinationPath,
+            fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
+            retry: ct => _facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: true, versioning: null, cancellationToken: ct),
+            cancellationToken);
+        if (overwriteRetryResult.Canceled)
+        {
+            operation.Finish(false);
+            return WfxResultCodes.UserAbort;
+        }
+
+        response = overwriteRetryResult.Response;
         var retryResult = await RetryMoveWhenVersionRequiredAsync(
             response,
             operation,
@@ -103,7 +122,7 @@ internal sealed class WfxTransferService
             sourcePath: totalCommanderSourcePath,
             destinationPath: totalCommanderDestinationPath,
             fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
-            retry: (versioning, ct) => _facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, versioning, ct),
+            retry: (versioning, ct) => _facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: false, versioning: versioning, cancellationToken: ct),
             cancellationToken);
         if (retryResult.Canceled)
         {
@@ -142,7 +161,23 @@ internal sealed class WfxTransferService
 
         var sourceAuth = AuthForProviderPath(sourceProviderPath);
         var destinationAuth = AuthForProviderPath(destinationProviderPath);
-        var response = await _facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, versioning: null, cancellationToken);
+        var response = await _facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: false, versioning: null, cancellationToken: cancellationToken);
+        var overwriteRetryResult = await RetryMoveWhenOverwriteRequiredAsync(
+            response,
+            operation,
+            moveOperation: "copy",
+            sourcePath: totalCommanderSourcePath,
+            destinationPath: totalCommanderDestinationPath,
+            fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
+            retry: ct => _facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: true, versioning: null, cancellationToken: ct),
+            cancellationToken);
+        if (overwriteRetryResult.Canceled)
+        {
+            operation.Finish(false);
+            return WfxResultCodes.UserAbort;
+        }
+
+        response = overwriteRetryResult.Response;
         var retryResult = await RetryMoveWhenVersionRequiredAsync(
             response,
             operation,
@@ -150,7 +185,7 @@ internal sealed class WfxTransferService
             sourcePath: totalCommanderSourcePath,
             destinationPath: totalCommanderDestinationPath,
             fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
-            retry: (versioning, ct) => _facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, versioning, ct),
+            retry: (versioning, ct) => _facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: false, versioning: versioning, cancellationToken: ct),
             cancellationToken);
         if (retryResult.Canceled)
         {
@@ -448,6 +483,66 @@ internal sealed class WfxTransferService
             || IsVersionRequiredMessage(response.Message);
     }
 
+    private static bool IsOverwriteRequiredResponse(WfxResponse<JsonElement> response)
+    {
+        if (response.Ok)
+        {
+            return false;
+        }
+
+        if (response.Metadata is null)
+        {
+            return IsOverwriteRequiredMessage(response.Message);
+        }
+
+        if (!response.Metadata.TryGetValue("action", out var action) || action.ValueKind != JsonValueKind.String)
+        {
+            return IsOverwriteRequiredMessage(response.Message);
+        }
+
+        return string.Equals(action.GetString(), "overwrite_required", StringComparison.OrdinalIgnoreCase)
+            || IsOverwriteRequiredMessage(response.Message);
+    }
+
+    private async Task<OverwriteRetryResult> RetryMoveWhenOverwriteRequiredAsync(
+        WfxResponse<JsonElement> response,
+        IWfxProgressReporter operation,
+        string moveOperation,
+        string sourcePath,
+        string destinationPath,
+        string fileName,
+        Func<CancellationToken, Task<WfxResponse<JsonElement>>> retry,
+        CancellationToken cancellationToken)
+    {
+        if (!IsOverwriteRequiredResponse(response))
+        {
+            return new OverwriteRetryResult(false, response);
+        }
+
+        operation.ReportDiagnostic($"{moveOperation}_overwrite_required file={fileName} destination={destinationPath}");
+        var overwrite = _overwriteDecisionProvider?.ConfirmOverwrite(new WfxOverwriteRequest
+        {
+            SourcePath = sourcePath,
+            DestinationPath = destinationPath,
+            FileName = fileName,
+            Metadata = response.Metadata,
+        }) ?? false;
+
+        if (!overwrite)
+        {
+            operation.ReportDiagnostic($"{moveOperation}_overwrite_canceled file={fileName} destination={destinationPath}");
+            return new OverwriteRetryResult(true, response);
+        }
+
+        operation.ReportDiagnostic($"{moveOperation}_overwrite_confirmed file={fileName} destination={destinationPath}");
+        var retryResponse = await retry(cancellationToken);
+        operation.ReportDiagnostic(
+            $"{moveOperation}_overwrite_retry_response ok={retryResponse.Ok} error_code={retryResponse.ErrorCode} message={SanitizeDiagnosticMessage(retryResponse.Message)} metadata={FormatMetadataKeys(retryResponse.Metadata)}");
+        return new OverwriteRetryResult(false, retryResponse);
+    }
+
+    private readonly record struct OverwriteRetryResult(bool Canceled, WfxResponse<JsonElement> Response);
+
     private async Task<VersionRetryResult> RetryMoveWhenVersionRequiredAsync(
         WfxResponse<JsonElement> response,
         IWfxProgressReporter operation,
@@ -464,6 +559,7 @@ internal sealed class WfxTransferService
         }
 
         operation.ReportDiagnostic($"{moveOperation}_version_required file={fileName} destination={destinationPath}");
+        operation.ReportDiagnostic($"{moveOperation}_version_dialog_open file={fileName} destination={destinationPath}");
         var versioning = _versioningDecisionProvider?.ChooseVersioning(new WfxVersioningRequest
         {
             SourcePath = sourcePath,
@@ -478,6 +574,7 @@ internal sealed class WfxTransferService
             return new VersionRetryResult(true, response);
         }
 
+        operation.ReportDiagnostic($"{moveOperation}_version_dialog_choice file={fileName} destination={destinationPath} major={versioning.MajorVersion}");
         var retryResponse = await retry(versioning, cancellationToken);
         operation.ReportDiagnostic(
             $"{moveOperation}_version_retry_response ok={retryResponse.Ok} error_code={retryResponse.ErrorCode} message={SanitizeDiagnosticMessage(retryResponse.Message)} metadata={FormatMetadataKeys(retryResponse.Metadata)}");
@@ -496,6 +593,18 @@ internal sealed class WfxTransferService
         return message.Contains("version choice", StringComparison.OrdinalIgnoreCase)
             || message.Contains("version_required", StringComparison.OrdinalIgnoreCase)
             || message.Contains("document already exists", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsOverwriteRequiredMessage(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        return message.Contains("overwrite_required", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("overwrite choice", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("requires overwrite", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FormatMetadataKeys(IReadOnlyDictionary<string, JsonElement>? metadata)

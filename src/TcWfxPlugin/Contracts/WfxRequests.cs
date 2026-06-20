@@ -15,6 +15,7 @@ public sealed class WfxMoveRequest
     public required BridgeAuthContext Auth { get; init; }
     public BridgeAuthContext? SourceAuth { get; init; }
     public BridgeAuthContext? DestinationAuth { get; init; }
+    public bool Overwrite { get; init; }
     public WfxUploadVersioning? Versioning { get; init; }
 }
 

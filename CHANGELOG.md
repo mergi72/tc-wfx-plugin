@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.3-beta] - 2026-06-20
+
+### Changed
+
+- Handle bridge `overwrite_required` responses for connection-to-connection copy/move into non-versioned targets such as WebDAV.
+- Show an overwrite/cancel confirmation instead of falling through to credential reset and a misleading provider login prompt.
+- Send `overwrite=true` on the retry after the user confirms overwrite.
+
 ## [0.7.1-beta] - 2026-06-20
 
 ### Changed
