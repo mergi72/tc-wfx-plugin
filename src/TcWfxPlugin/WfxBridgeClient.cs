@@ -53,6 +53,48 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             SerializerContext.WfxResponseWfxProvidersData,
             cancellationToken);
     }
+    public string? ResolveCredentialTarget(string? connectionName, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(connectionName))
+        {
+            return null;
+        }
+
+        try
+        {
+            var endpoint = $"bridge/wfx/connections/{Uri.EscapeDataString(connectionName.Trim())}";
+            var response = GetAsync(endpoint, SerializerContext.WfxResponseJsonElement, cancellationToken)
+                .GetAwaiter()
+                .GetResult();
+            if (!response.Ok || response.Data.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            {
+                return null;
+            }
+
+            if (!response.Data.TryGetProperty("auth", out var auth) || auth.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            foreach (var key in new[] { "credential_id", "credentialId", "target", "targetBase", "target_base" })
+            {
+                if (auth.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
+                {
+                    var text = value.GetString();
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        return text.Trim();
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Keep the existing global credential target behavior if bridge detail lookup is unavailable.
+        }
+
+        return null;
+    }
 
     public Task<WfxResponse<WfxListingData>> ListAsync(string providerPath, BridgeAuthContext auth, CancellationToken cancellationToken = default)
     {

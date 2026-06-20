@@ -478,14 +478,15 @@ public static class WfxNativeExports
     private static WfxEntryPoints CreateEntryPoints()
     {
         var baseUrl = RuntimeConfig.BridgeUrl;
+        var client = new WfxBridgeClient(baseUrl, RuntimeConfig.BridgeTimeout);
         var authProvider = new TcDialogAuthProvider(
             TryRequestValue,
             TryConfirmYesNo,
             new WindowsCredentialStore(),
             "tc-wfx/bridge",
             new HttpCredentialBrokerClient(),
-            GetTotalCommanderLanguageCode);
-        var client = new WfxBridgeClient(baseUrl, RuntimeConfig.BridgeTimeout);
+            GetTotalCommanderLanguageCode,
+            credentialTargetResolver: connection => client.ResolveCredentialTarget(connection));
         var facade = new WfxPluginFacade(client);
         var versioningProvider = new TcDialogVersioningDecisionProvider(ChooseVersioningWithCancel, GetTotalCommanderLanguageCode);
         var runtime = new WfxPluginRuntime(facade, authProvider, versioningDecisionProvider: versioningProvider);

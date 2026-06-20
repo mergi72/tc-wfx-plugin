@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1-beta] - 2026-06-20
+
+### Changed
+
+- Resolve WFX credentials per bridge connection instead of reusing one provider-level target for all connections.
+- Provider login dialogs include the connection name so the requested credential scope is visible to the user.
+- Reuse credentials from Windows Credential Manager when the broker has no entry yet, avoiding repeated prompts after Total Commander restart.
+
 ## [0.7.0-beta] - 2026-06-17
 
 ### Changed

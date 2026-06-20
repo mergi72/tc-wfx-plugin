@@ -1,3 +1,4 @@
+using TcWfxPlugin.Contracts;
 using TcWfxPlugin.Wfx;
 
 namespace TcWfxPlugin.Tests;
@@ -257,6 +258,96 @@ public sealed class TcDialogAuthProviderTests
         }
     }
 
+
+    [Fact]
+    public void GetAuthContext_CredentialsMode_IncludesConnectionNameInPromptTitle()
+    {
+        var oldMode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE");
+        var oldUser = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
+        var oldPassword = Environment.GetEnvironmentVariable("TC_WFX_PASSWORD");
+        var oldCredentialId = Environment.GetEnvironmentVariable("TC_WFX_CREDENTIAL_ID");
+
+        Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", "credentials");
+        Environment.SetEnvironmentVariable("TC_WFX_USERNAME", null);
+        Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", null);
+        Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", null);
+
+        try
+        {
+            var titles = new List<string>();
+            var provider = new TcDialogAuthProvider(
+                (requestType, title, _) =>
+                {
+                    titles.Add(title);
+                    return requestType == WfxNativeExports.RequestTypeUserName ? "tc-user" : "tc-pass";
+                },
+                (_, _) => false,
+                new FakeCredentialStore(),
+                string.Empty);
+
+            _ = provider.GetAuthContext("webdav1");
+
+            Assert.Equal(new[] { "Provider login - webdav1", "Provider login - webdav1" }, titles);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", oldMode);
+            Environment.SetEnvironmentVariable("TC_WFX_USERNAME", oldUser);
+            Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", oldPassword);
+            Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", oldCredentialId);
+        }
+    }
+
+    [Fact]
+    public void GetAuthContext_CredentialsMode_UsesCredentialStoreWhenBrokerReturnsNoCredentials()
+    {
+        var oldMode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE");
+        var oldUser = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
+        var oldPassword = Environment.GetEnvironmentVariable("TC_WFX_PASSWORD");
+        var oldCredentialId = Environment.GetEnvironmentVariable("TC_WFX_CREDENTIAL_ID");
+
+        Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", "credentials");
+        Environment.SetEnvironmentVariable("TC_WFX_USERNAME", null);
+        Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", null);
+        Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", null);
+
+        try
+        {
+            var store = new FakeCredentialStore
+            {
+                ShouldReadSucceed = true,
+                ReadUserName = "stored-user",
+                ReadPassword = "stored-pass",
+            };
+            var requestCalls = 0;
+            var provider = new TcDialogAuthProvider(
+                (_, _, _) =>
+                {
+                    requestCalls++;
+                    return "prompted";
+                },
+                (_, _) => false,
+                store,
+                "tc-wfx/bridge",
+                new NullCredentialBrokerClient(),
+                credentialTargetResolver: connection => connection == "edocat" ? "merhautr@cheminvest/eDoCat_Helper" : null);
+
+            var auth = provider.GetAuthContext("edocat");
+
+            Assert.Equal("credentials", auth.Mode);
+            Assert.Null(auth.CredentialId);
+            Assert.Equal("stored-user", auth.Username);
+            Assert.Equal("stored-pass", auth.Password);
+            Assert.Equal(0, requestCalls);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TC_WFX_AUTH_MODE", oldMode);
+            Environment.SetEnvironmentVariable("TC_WFX_USERNAME", oldUser);
+            Environment.SetEnvironmentVariable("TC_WFX_PASSWORD", oldPassword);
+            Environment.SetEnvironmentVariable("TC_WFX_CREDENTIAL_ID", oldCredentialId);
+        }
+    }
     private sealed class FakeCredentialStore : ICredentialStore
     {
         public bool ShouldReadSucceed { get; set; }
@@ -290,5 +381,35 @@ public sealed class TcDialogAuthProviderTests
             WasDeleted = true;
             LastDeletedTarget = target;
         }
+    }
+    private sealed class NullCredentialBrokerClient : ICredentialBrokerClient
+    {
+        public BridgeAuthContext? Resolve(CredentialBrokerAuthRequirement requirement, string? provider = null)
+        {
+            return null;
+        }
+    }
+
+    [Fact]
+    public void GetAuthContext_CredentialsMode_UsesConnectionSpecificCredentialTarget()
+    {
+        var requests = new Queue<string>(new[] { "user-one", "secret-one", "user-two", "secret-two" });
+        var store = new FakeCredentialStore();
+        var provider = new TcDialogAuthProvider(
+            (_, _, _) => requests.Dequeue(),
+            (_, _) => true,
+            store,
+            "tc-wfx/bridge",
+            null,
+            languageProvider: null,
+            credentialTargetResolver: connection => string.Equals(connection, "webdav1", StringComparison.OrdinalIgnoreCase)
+                ? "tc-wfx/webdav"
+                : null);
+
+        var webdav = provider.GetAuthContext("webdav1");
+        var alfresco = provider.GetAuthContext("alfresco");
+
+        Assert.Equal("tc-wfx/webdav", webdav.CredentialId);
+        Assert.Equal("tc-wfx/bridge", alfresco.CredentialId);
     }
 }

@@ -93,7 +93,7 @@ internal sealed class WfxListingService
             return (WfxResultCodes.FileNotFound, []);
         }
 
-        var response = await _facade.ListDirectoryAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
+        var response = await _facade.ListDirectoryAsync(providerPath, AuthForProviderPath(providerPath), cancellationToken);
         if (!response.Ok || response.Data is null)
         {
             if (ShouldTryStatFallback(response.ErrorCode))
@@ -127,7 +127,7 @@ internal sealed class WfxListingService
 
     private async Task<WfxFindData?> TryResolveSingleItemViaStatAsync(string providerPath, CancellationToken cancellationToken)
     {
-        var response = await _facade.GetItemInfoAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
+        var response = await _facade.GetItemInfoAsync(providerPath, AuthForProviderPath(providerPath), cancellationToken);
         if (!response.Ok || response.Data.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
         {
             return null;
@@ -136,6 +136,15 @@ internal sealed class WfxListingService
         return TryMapStatItem(response.Data, providerPath, out var item) ? item : null;
     }
 
+    private BridgeAuthContext AuthForProviderPath(string providerPath)
+    {
+        return _authProvider.GetAuthContext(ConnectionNameFromProviderPath(providerPath));
+    }
+
+    private static string? ConnectionNameFromProviderPath(string providerPath)
+    {
+        return ProviderPath.TryParse(providerPath, out var parsed) ? parsed.Provider : null;
+    }
     private static bool TryMapStatItem(JsonElement data, string providerPath, out WfxFindData item)
     {
         item = default!;

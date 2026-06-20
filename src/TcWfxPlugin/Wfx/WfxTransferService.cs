@@ -42,7 +42,7 @@ internal sealed class WfxTransferService
             return WfxResultCodes.FileNotFound;
         }
 
-        var response = await _facade.CreateDirectoryAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
+        var response = await _facade.CreateDirectoryAsync(providerPath, AuthForProviderPath(providerPath), cancellationToken);
         operation.Finish(response.Ok);
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
@@ -64,7 +64,7 @@ internal sealed class WfxTransferService
             return WfxResultCodes.FileNotFound;
         }
 
-        var response = await _facade.DeleteAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
+        var response = await _facade.DeleteAsync(providerPath, AuthForProviderPath(providerPath), cancellationToken);
         operation.Finish(response.Ok);
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
@@ -93,7 +93,7 @@ internal sealed class WfxTransferService
             return WfxResultCodes.FileNotFound;
         }
 
-        var auth = _authProvider.GetAuthContext();
+        var auth = AuthForProviderPath(destinationProviderPath);
         var response = await _facade.RenameAsync(sourceProviderPath, destinationProviderPath, auth, versioning: null, cancellationToken);
         var retryResult = await RetryMoveWhenVersionRequiredAsync(
             response,
@@ -139,7 +139,7 @@ internal sealed class WfxTransferService
             return WfxResultCodes.FileNotFound;
         }
 
-        var auth = _authProvider.GetAuthContext();
+        var auth = AuthForProviderPath(destinationProviderPath);
         var response = await _facade.CopyAsync(sourceProviderPath, destinationProviderPath, auth, versioning: null, cancellationToken);
         var retryResult = await RetryMoveWhenVersionRequiredAsync(
             response,
@@ -187,7 +187,7 @@ internal sealed class WfxTransferService
         ReportProgressStage(operation, expectedSize, 1);
         var rawDownloadHeartbeat = new TransferProgressHeartbeat(operation, expectedSize, startPercent: 2, endPercent: 90, intervalMs: 1000);
 
-        var rawDownloadTask = _facade.DownloadRawAsync(sourceProviderPath, _authProvider.GetAuthContext(), cancellationToken);
+        var rawDownloadTask = _facade.DownloadRawAsync(sourceProviderPath, AuthForProviderPath(sourceProviderPath), cancellationToken);
         var rawDownload = await rawDownloadHeartbeat.AwaitAsync(rawDownloadTask, cancellationToken);
         if (rawDownload is not null)
         {
@@ -236,7 +236,7 @@ internal sealed class WfxTransferService
             }
         }
 
-        var response = await _facade.DownloadAsync(sourceProviderPath, _authProvider.GetAuthContext(), cancellationToken);
+        var response = await _facade.DownloadAsync(sourceProviderPath, AuthForProviderPath(sourceProviderPath), cancellationToken);
         if (!response.Ok || response.Data.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
         {
             return WfxBridgeErrorMapper.MapError(response.ErrorCode);
@@ -305,7 +305,7 @@ internal sealed class WfxTransferService
             return WfxResultCodes.FileNotFound;
         }
 
-        var auth = _authProvider.GetAuthContext();
+        var auth = AuthForProviderPath(destinationProviderPath);
         ResolveUploadTarget(destinationProviderPath, out var uploadDestinationProviderPath, out var uploadFileNameFromPath, out var destinationLooksLikeFile);
 
         var fileName = uploadFileNameFromPath;
@@ -416,6 +416,15 @@ internal sealed class WfxTransferService
         return response.Ok ? WfxResultCodes.Success : WfxBridgeErrorMapper.MapError(response.ErrorCode);
     }
 
+    private BridgeAuthContext AuthForProviderPath(string providerPath)
+    {
+        return _authProvider.GetAuthContext(ConnectionNameFromProviderPath(providerPath));
+    }
+
+    private static string? ConnectionNameFromProviderPath(string providerPath)
+    {
+        return ProviderPath.TryParse(providerPath, out var parsed) ? parsed.Provider : null;
+    }
     private static bool IsVersionRequiredResponse(WfxResponse<JsonElement> response)
     {
         if (response.Ok)
@@ -602,7 +611,7 @@ internal sealed class WfxTransferService
     {
         try
         {
-            var response = await _facade.GetItemInfoAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
+            var response = await _facade.GetItemInfoAsync(providerPath, AuthForProviderPath(providerPath), cancellationToken);
             if (!response.Ok || response.Data.ValueKind != JsonValueKind.Object)
             {
                 return null;
@@ -736,7 +745,7 @@ internal sealed class WfxTransferService
             return false;
         }
 
-        var response = await _facade.GetItemInfoAsync(providerPath, _authProvider.GetAuthContext(), cancellationToken);
+        var response = await _facade.GetItemInfoAsync(providerPath, AuthForProviderPath(providerPath), cancellationToken);
         if (response.Ok)
         {
             return true;
@@ -790,4 +799,3 @@ internal sealed class WfxTransferService
         }
     }
 }
-

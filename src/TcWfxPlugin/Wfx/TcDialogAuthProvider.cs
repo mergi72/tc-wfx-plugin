@@ -9,9 +9,10 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
     private readonly ICredentialStore _credentialStore;
     private readonly ICredentialBrokerClient? _credentialBrokerClient;
     private readonly string _credentialTarget;
+    private readonly Func<string?, string?>? _credentialTargetResolver;
     private readonly WfxLocalization _text;
     private readonly object _syncRoot = new();
-    private BridgeAuthContext? _cachedAuth;
+    private readonly Dictionary<string, BridgeAuthContext> _cachedAuthByTarget = new(StringComparer.OrdinalIgnoreCase);
     private bool _ignoreStoredCredentialsOnce;
 
     public TcDialogAuthProvider(
@@ -21,13 +22,15 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
         string credentialTarget,
         ICredentialBrokerClient? credentialBrokerClient = null,
         Func<string?>? languageProvider = null,
-        string? languageId = null)
+        string? languageId = null,
+        Func<string?, string?>? credentialTargetResolver = null)
     {
         _requestValue = requestValue;
         _requestYesNo = requestYesNo;
         _credentialStore = credentialStore;
         _credentialTarget = credentialTarget;
         _credentialBrokerClient = credentialBrokerClient;
+        _credentialTargetResolver = credentialTargetResolver;
         _text = languageId is not null
             ? WfxLocalization.ForLanguageId(languageId)
             : WfxLocalization.Current(languageProvider ?? (() => null));
@@ -37,18 +40,19 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
     {
         lock (_syncRoot)
         {
-            if (_cachedAuth is not null)
-            {
-                return _cachedAuth;
-            }
-
             var mode = Environment.GetEnvironmentVariable("TC_WFX_AUTH_MODE") ?? "credentials";
             if (string.Equals(mode, "credentials", StringComparison.OrdinalIgnoreCase))
             {
                 var credentialId = Environment.GetEnvironmentVariable("TC_WFX_CREDENTIAL_ID");
                 if (string.IsNullOrWhiteSpace(credentialId))
                 {
-                    credentialId = _credentialTarget;
+                    credentialId = ResolveCredentialTarget(provider);
+                }
+
+                var cacheKey = CacheKeyForCredentialTarget(credentialId);
+                if (_cachedAuthByTarget.TryGetValue(cacheKey, out var cachedAuth))
+                {
+                    return cachedAuth;
                 }
 
                 var username = Environment.GetEnvironmentVariable("TC_WFX_USERNAME");
@@ -64,30 +68,34 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                     var brokerAuth = TryResolveViaBroker(credentialId, provider);
                     if (brokerAuth is not null)
                     {
-                        _cachedAuth = brokerAuth;
-                        return _cachedAuth;
+                        return CacheAuth(cacheKey, brokerAuth);
                     }
 
                     if (_credentialBrokerClient is null)
                     {
-                        _cachedAuth = new BridgeAuthContext
+                        return CacheAuth(cacheKey, new BridgeAuthContext
                         {
                             Mode = "credentials",
                             CredentialId = credentialId,
                             Username = null,
                             Password = null,
                             Token = null,
-                        };
+                        });
+                    }
 
-                        return _cachedAuth;
+                    var storeAuth = TryResolveViaCredentialStore(credentialId);
+                    if (storeAuth is not null)
+                    {
+                        return CacheAuth(cacheKey, storeAuth);
                     }
                 }
 
+                var loginTitle = ProviderLoginTitle(provider);
                 if (string.IsNullOrWhiteSpace(username) && string.IsNullOrWhiteSpace(password) && string.IsNullOrWhiteSpace(token))
                 {
                     username = _requestValue(
                         WfxNativeExports.RequestTypeUserName,
-                        _text.ProviderLoginTitle,
+                        loginTitle,
                         _text.UserNamePrompt);
                     promptedForCredentials = true;
                 }
@@ -96,7 +104,7 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                 {
                     password = _requestValue(
                         WfxNativeExports.RequestTypePassword,
-                        _text.ProviderLoginTitle,
+                        loginTitle,
                         _text.PasswordPrompt);
                     promptedForCredentials = true;
                 }
@@ -114,19 +122,18 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                         var saveTarget = string.IsNullOrWhiteSpace(credentialId) ? _credentialTarget : credentialId;
                         _credentialStore.Save(saveTarget, username, password);
                         credentialId = saveTarget;
+                        cacheKey = CacheKeyForCredentialTarget(credentialId);
 
                         if (_credentialBrokerClient is null)
                         {
-                            _cachedAuth = new BridgeAuthContext
+                            return CacheAuth(cacheKey, new BridgeAuthContext
                             {
                                 Mode = "credentials",
                                 CredentialId = credentialId,
                                 Username = null,
                                 Password = null,
                                 Token = null,
-                            };
-
-                            return _cachedAuth;
+                            });
                         }
                     }
                     else
@@ -136,25 +143,27 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
                     }
                 }
 
-                _cachedAuth = new BridgeAuthContext
+                return CacheAuth(cacheKey, new BridgeAuthContext
                 {
                     Mode = "credentials",
                     CredentialId = null,
                     Username = username,
                     Password = password,
                     Token = token,
-                };
-
-                return _cachedAuth;
+                });
             }
 
-            _cachedAuth = new BridgeAuthContext
+            const string winUserCacheKey = "__winuser__";
+            if (_cachedAuthByTarget.TryGetValue(winUserCacheKey, out var cachedWinUserAuth))
+            {
+                return cachedWinUserAuth;
+            }
+
+            return CacheAuth(winUserCacheKey, new BridgeAuthContext
             {
                 Mode = "winuser",
                 WinUser = Environment.GetEnvironmentVariable("TC_WFX_WIN_USER") ?? Environment.UserName,
-            };
-
-            return _cachedAuth;
+            });
         }
     }
 
@@ -162,11 +171,53 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
     {
         lock (_syncRoot)
         {
-            _cachedAuth = null;
+            _cachedAuthByTarget.Clear();
             _ignoreStoredCredentialsOnce = true;
         }
     }
 
+    private string ProviderLoginTitle(string? provider)
+    {
+        if (string.IsNullOrWhiteSpace(provider))
+        {
+            return _text.ProviderLoginTitle;
+        }
+
+        return $"{_text.ProviderLoginTitle} - {provider.Trim()}";
+    }
+    private string ResolveCredentialTarget(string? provider)
+    {
+        var resolved = _credentialTargetResolver?.Invoke(provider);
+        return string.IsNullOrWhiteSpace(resolved) ? _credentialTarget : resolved.Trim();
+    }
+
+    private static string CacheKeyForCredentialTarget(string? credentialId)
+    {
+        return string.IsNullOrWhiteSpace(credentialId) ? "__inline__" : credentialId.Trim();
+    }
+
+    private BridgeAuthContext CacheAuth(string cacheKey, BridgeAuthContext auth)
+    {
+        _cachedAuthByTarget[cacheKey] = auth;
+        return auth;
+    }
+
+    private BridgeAuthContext? TryResolveViaCredentialStore(string credentialId)
+    {
+        if (!_credentialStore.TryRead(credentialId, out var username, out var password))
+        {
+            return null;
+        }
+
+        return new BridgeAuthContext
+        {
+            Mode = "credentials",
+            CredentialId = null,
+            Username = username,
+            Password = password,
+            Token = null,
+        };
+    }
     private BridgeAuthContext? TryResolveViaBroker(string credentialId, string? provider)
     {
         if (_credentialBrokerClient is null)
@@ -203,5 +254,3 @@ public sealed class TcDialogAuthProvider : IWfxAuthProvider
         };
     }
 }
-
-
