@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0] - 2026-06-23
+
+### Changed
+
+- First stable release of the Total Commander WFX plugin.
+- Compatible with DMS Provider Bridge 1.0.0 and Credential Broker 1.0.0.
+- Supports connection discovery, uploads, downloads, copy, move, delete, mkdir, version prompts, overwrite prompts, and localized dialogs.
+
 ## [0.7.3-beta] - 2026-06-20
 
 ### Changed
