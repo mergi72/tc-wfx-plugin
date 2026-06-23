@@ -72,7 +72,7 @@ jobs:
         run: dotnet publish src/TcWfxPlugin/TcWfxPlugin.csproj --configuration Release -r win-x64 /p:PublishAot=true /p:NativeLib=Shared --output artifacts/TcWfxPlugin
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tc-wfx-plugin-release
           path: artifacts/TcWfxPlugin
