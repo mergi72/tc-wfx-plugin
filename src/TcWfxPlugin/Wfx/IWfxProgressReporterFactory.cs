@@ -14,4 +14,10 @@ public interface IWfxProgressReporterFactory
         string operation,
         string sourcePath,
         string destinationPath);
+
+    IWfxProgressReporter CreateSynthetic(
+        IProgress<WfxTransferProgress>? progress,
+        string operation,
+        string sourcePath,
+        string destinationPath);
 }

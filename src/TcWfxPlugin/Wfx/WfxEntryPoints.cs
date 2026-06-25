@@ -54,14 +54,22 @@ public sealed class WfxEntryPoints
 
         if (move)
         {
+            string? moveSourceProviderPath = null;
+            string? moveDestinationProviderPath = null;
             var sourceIsProviderPath = !LooksLikeWindowsLocalPath(oldName)
-                && TotalCommanderPathMapper.TryToProviderPath(oldName, out _);
+                && TotalCommanderPathMapper.TryToProviderPath(oldName, out moveSourceProviderPath);
             var destinationIsProviderPath = !LooksLikeWindowsLocalPath(newName)
-                && TotalCommanderPathMapper.TryToProviderPath(newName, out _);
+                && TotalCommanderPathMapper.TryToProviderPath(newName, out moveDestinationProviderPath);
 
-            // dms -> dms move: delegate to bridge move endpoint.
+            // cross-provider dms -> dms move: route through byte-based download/upload
+            // progress because TC does not draw FsRenMovFileW server-side progress.
             if (sourceIsProviderPath && destinationIsProviderPath)
             {
+                if (!AreSameProvider(moveSourceProviderPath!, moveDestinationProviderPath!))
+                {
+                    return CopyProviderToProviderViaLocalPipeline(oldName, newName, move: true, progress);
+                }
+
                 return _runtime.RenameAsync(oldName, newName, progress).GetAwaiter().GetResult();
             }
 
@@ -97,7 +105,87 @@ public sealed class WfxEntryPoints
             return WfxResultCodes.FileNotFound;
         }
 
+        string? copySourceProviderPath = null;
+        string? copyDestinationProviderPath = null;
+        var sourceIsDmsPath = !LooksLikeWindowsLocalPath(oldName)
+            && TotalCommanderPathMapper.TryToProviderPath(oldName, out copySourceProviderPath);
+        var destinationIsDmsPath = !LooksLikeWindowsLocalPath(newName)
+            && TotalCommanderPathMapper.TryToProviderPath(newName, out copyDestinationProviderPath);
+        if (sourceIsDmsPath && destinationIsDmsPath && !AreSameProvider(copySourceProviderPath!, copyDestinationProviderPath!))
+        {
+            return CopyProviderToProviderViaLocalPipeline(oldName, newName, move: false, progress);
+        }
+
         return _runtime.CopyAsync(oldName, newName, progress).GetAwaiter().GetResult();
+    }
+
+    private int CopyProviderToProviderViaLocalPipeline(
+        string sourcePath,
+        string destinationPath,
+        bool move,
+        IProgress<WfxTransferProgress>? progress)
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), "tc-wfx-plugin", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectory);
+
+        var sourceLeafName = TryGetSourceLeafName(sourcePath);
+        if (string.IsNullOrWhiteSpace(sourceLeafName))
+        {
+            sourceLeafName = "transfer.bin";
+        }
+
+        var tempPath = Path.Combine(tempDirectory, sourceLeafName);
+        try
+        {
+            var downloadResult = _runtime.GetFileAsync(sourcePath, tempPath, progress).GetAwaiter().GetResult();
+            if (downloadResult != WfxResultCodes.Success)
+            {
+                return downloadResult;
+            }
+
+            var uploadResult = _runtime.PutFileAsync(tempPath, destinationPath, overwrite: true, progress).GetAwaiter().GetResult();
+            if (uploadResult != WfxResultCodes.Success)
+            {
+                return uploadResult;
+            }
+
+            if (move)
+            {
+                var deleteResult = _runtime.DeleteAsync(sourcePath, progress).GetAwaiter().GetResult();
+                return NormalizeDeleteResult(sourcePath, deleteResult);
+            }
+
+            return WfxResultCodes.Success;
+        }
+        finally
+        {
+            TryDeleteLocalSourcePath(tempPath);
+            TryDeleteEmptyDirectory(tempDirectory);
+        }
+    }
+
+    private static bool AreSameProvider(string sourceProviderPath, string destinationProviderPath)
+    {
+        var sourceProvider = sourceProviderPath.Split(':', 2)[0];
+        var destinationProvider = destinationProviderPath.Split(':', 2)[0];
+        return sourceProvider.Equals(destinationProvider, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void TryDeleteEmptyDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path) && !Directory.EnumerateFileSystemEntries(path).Any())
+            {
+                Directory.Delete(path);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private static bool LooksLikeWindowsLocalPath(string path)

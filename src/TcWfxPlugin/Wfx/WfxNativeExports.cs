@@ -203,8 +203,25 @@ public static class WfxNativeExports
 
         var oldName = Marshal.PtrToStringUni(oldNamePtr) ?? string.Empty;
         var newName = Marshal.PtrToStringUni(newNamePtr) ?? string.Empty;
-        var progress = CreateDirectProgressReporter(move != 0 ? "move" : "copy", oldName, newName);
-        var result = EntryPoints.Value.FsRenMovFile(oldName, newName, move != 0, progress);
+        var operation = move != 0 ? "move" : "copy";
+        var affinityProgress = CreateThreadAffinityProgressReporter(operation, oldName, newName, "RENMOV");
+        if (affinityProgress is null)
+        {
+            var directResult = EntryPoints.Value.FsRenMovFile(oldName, newName, move != 0, progress: null);
+            return MapFileTransferResultForTotalCommander(directResult);
+        }
+
+        affinityProgress.Report(new WfxTransferProgress
+        {
+            Operation = operation,
+            SourcePath = oldName,
+            DestinationPath = newName,
+            BytesTransferred = 0,
+            TotalBytes = null,
+        });
+
+        var transferTask = Task.Run(() => EntryPoints.Value.FsRenMovFile(oldName, newName, move != 0, affinityProgress));
+        var result = ExecuteTransferWithThreadAffinity("RENMOV", affinityProgress, transferTask);
         return MapFileTransferResultForTotalCommander(result);
     }
 

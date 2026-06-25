@@ -7,6 +7,7 @@ namespace TcWfxPlugin.Wfx;
 internal sealed class WfxTransferService
 {
     private const int IoChunkSize = 64 * 1024;
+    private const long SyntheticProgressUnits = 100;
 
     private readonly WfxPluginFacade _facade;
     private readonly IWfxAuthProvider _authProvider;
@@ -78,7 +79,7 @@ internal sealed class WfxTransferService
         IProgress<WfxTransferProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        using var operation = _progressReporterFactory.CreateUnit(
+        using var operation = _progressReporterFactory.CreateSynthetic(
             progress,
             operation: "move",
             sourcePath: totalCommanderSourcePath,
@@ -98,7 +99,8 @@ internal sealed class WfxTransferService
 
         var sourceAuth = AuthForProviderPath(sourceProviderPath);
         var destinationAuth = AuthForProviderPath(destinationProviderPath);
-        var response = await _facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: false, versioning: null, cancellationToken: cancellationToken);
+        var heartbeat = CreateRemoteTransferHeartbeat(operation);
+        var response = await heartbeat.AwaitAsync(_facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: false, versioning: null, cancellationToken: cancellationToken), cancellationToken);
         var overwriteRetryResult = await RetryMoveWhenOverwriteRequiredAsync(
             response,
             operation,
@@ -106,7 +108,7 @@ internal sealed class WfxTransferService
             sourcePath: totalCommanderSourcePath,
             destinationPath: totalCommanderDestinationPath,
             fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
-            retry: ct => _facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: true, versioning: null, cancellationToken: ct),
+            retry: ct => heartbeat.AwaitAsync(_facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: true, versioning: null, cancellationToken: ct), ct),
             cancellationToken);
         if (overwriteRetryResult.Canceled)
         {
@@ -122,7 +124,7 @@ internal sealed class WfxTransferService
             sourcePath: totalCommanderSourcePath,
             destinationPath: totalCommanderDestinationPath,
             fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
-            retry: (versioning, ct) => _facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: false, versioning: versioning, cancellationToken: ct),
+            retry: (versioning, ct) => heartbeat.AwaitAsync(_facade.RenameAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: false, versioning: versioning, cancellationToken: ct), ct),
             cancellationToken);
         if (retryResult.Canceled)
         {
@@ -141,7 +143,7 @@ internal sealed class WfxTransferService
         IProgress<WfxTransferProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        using var operation = _progressReporterFactory.CreateUnit(
+        using var operation = _progressReporterFactory.CreateSynthetic(
             progress,
             operation: "copy",
             sourcePath: totalCommanderSourcePath,
@@ -161,7 +163,8 @@ internal sealed class WfxTransferService
 
         var sourceAuth = AuthForProviderPath(sourceProviderPath);
         var destinationAuth = AuthForProviderPath(destinationProviderPath);
-        var response = await _facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: false, versioning: null, cancellationToken: cancellationToken);
+        var heartbeat = CreateRemoteTransferHeartbeat(operation);
+        var response = await heartbeat.AwaitAsync(_facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: false, versioning: null, cancellationToken: cancellationToken), cancellationToken);
         var overwriteRetryResult = await RetryMoveWhenOverwriteRequiredAsync(
             response,
             operation,
@@ -169,7 +172,7 @@ internal sealed class WfxTransferService
             sourcePath: totalCommanderSourcePath,
             destinationPath: totalCommanderDestinationPath,
             fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
-            retry: ct => _facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: true, versioning: null, cancellationToken: ct),
+            retry: ct => heartbeat.AwaitAsync(_facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: true, versioning: null, cancellationToken: ct), ct),
             cancellationToken);
         if (overwriteRetryResult.Canceled)
         {
@@ -185,7 +188,7 @@ internal sealed class WfxTransferService
             sourcePath: totalCommanderSourcePath,
             destinationPath: totalCommanderDestinationPath,
             fileName: Path.GetFileName(destinationProviderPath.Replace('\\', '/')),
-            retry: (versioning, ct) => _facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: false, versioning: versioning, cancellationToken: ct),
+            retry: (versioning, ct) => heartbeat.AwaitAsync(_facade.CopyAsync(sourceProviderPath, destinationProviderPath, destinationAuth, sourceAuth, destinationAuth, overwrite: false, versioning: versioning, cancellationToken: ct), ct),
             cancellationToken);
         if (retryResult.Canceled)
         {
@@ -622,6 +625,16 @@ internal sealed class WfxTransferService
         }
 
         return message.Replace('\r', ' ').Replace('\n', ' ');
+    }
+
+    private static TransferProgressHeartbeat CreateRemoteTransferHeartbeat(IWfxProgressReporter operation)
+    {
+        return new TransferProgressHeartbeat(
+            operation,
+            SyntheticProgressUnits,
+            startPercent: 1,
+            endPercent: 95,
+            intervalMs: 1000);
     }
 
     private sealed class TransferProgressHeartbeat

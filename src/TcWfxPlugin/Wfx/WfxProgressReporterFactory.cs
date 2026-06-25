@@ -2,6 +2,8 @@ namespace TcWfxPlugin.Wfx;
 
 public sealed class WfxProgressReporterFactory : IWfxProgressReporterFactory
 {
+    private const long SyntheticProgressUnits = 100;
+
     public IWfxProgressReporter Create(
         IProgress<WfxTransferProgress>? progress,
         string operation,
@@ -19,6 +21,17 @@ public sealed class WfxProgressReporterFactory : IWfxProgressReporterFactory
         string destinationPath)
     {
         var reporter = new WfxProgressReporter(progress, operation, sourcePath, destinationPath, totalBytes: 1);
+        reporter.Report(0);
+        return reporter;
+    }
+
+    public IWfxProgressReporter CreateSynthetic(
+        IProgress<WfxTransferProgress>? progress,
+        string operation,
+        string sourcePath,
+        string destinationPath)
+    {
+        var reporter = new WfxProgressReporter(progress, operation, sourcePath, destinationPath, SyntheticProgressUnits);
         reporter.Report(0);
         return reporter;
     }

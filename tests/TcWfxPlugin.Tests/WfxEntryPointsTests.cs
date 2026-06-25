@@ -569,6 +569,38 @@ public sealed class WfxEntryPointsTests
     }
 
     [Fact]
+    public void FsRenMovFile_Move_CrossProviderDmsToDms_UsesDownloadUploadThenDelete()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "webdav" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var result = entryPoints.FsRenMovFile("\\alfresco\\source\\file.txt", "\\webdav\\target\\file.txt", move: true);
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, bridgeClient.DownloadCallCount);
+        Assert.Equal(1, bridgeClient.UploadCallCount);
+        Assert.Equal(1, bridgeClient.DeleteCallCount);
+        Assert.Equal(0, bridgeClient.RenameCallCount);
+        Assert.Equal(0, bridgeClient.CopyCallCount);
+    }
+
+    [Fact]
+    public void FsRenMovFile_Copy_CrossProviderDmsToDms_UsesDownloadUpload()
+    {
+        var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "webdav" });
+        var entryPoints = CreateEntryPoints(bridgeClient);
+
+        var result = entryPoints.FsRenMovFile("\\alfresco\\source\\file.txt", "\\webdav\\target\\file.txt", move: false);
+
+        Assert.Equal(WfxResultCodes.Success, result);
+        Assert.Equal(1, bridgeClient.DownloadCallCount);
+        Assert.Equal(1, bridgeClient.UploadCallCount);
+        Assert.Equal(0, bridgeClient.DeleteCallCount);
+        Assert.Equal(0, bridgeClient.RenameCallCount);
+        Assert.Equal(0, bridgeClient.CopyCallCount);
+    }
+
+    [Fact]
     public void FsRenMovFile_Move_SamePath_IsHandledAsDelete()
     {
         var bridgeClient = new FakeBridgeClient(new[] { "edocat", "alfresco", "fso" })
