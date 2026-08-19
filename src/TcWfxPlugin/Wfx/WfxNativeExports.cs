@@ -94,18 +94,32 @@ public static class WfxNativeExports
     public static void FsStatusInfoW(nint remoteDirPtr, int infoStartEnd, int infoOperation)
     {
         var remoteDir = Marshal.PtrToStringUni(remoteDirPtr) ?? string.Empty;
+        var correlationId = infoStartEnd == 0
+            ? WfxCorrelationContext.Begin()
+            : WfxCorrelationContext.CurrentOrCreate();
         AppendDiagnosticLog(
             StatusLogPath,
-            $"{DateTime.Now:HH:mm:ss.fff} FsStatusInfoW startEnd={infoStartEnd} operation={infoOperation} remoteDir={remoteDir}");
+            $"{DateTime.Now:HH:mm:ss.fff} FsStatusInfoW startEnd={infoStartEnd} operation={infoOperation} remoteDir={remoteDir} correlation_id={correlationId}");
+        if (infoStartEnd != 0)
+        {
+            WfxCorrelationContext.End();
+        }
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsStatusInfo")]
     public static void FsStatusInfo(nint remoteDirPtr, int infoStartEnd, int infoOperation)
     {
         var remoteDir = Marshal.PtrToStringAnsi(remoteDirPtr) ?? string.Empty;
+        var correlationId = infoStartEnd == 0
+            ? WfxCorrelationContext.Begin()
+            : WfxCorrelationContext.CurrentOrCreate();
         AppendDiagnosticLog(
             StatusLogPath,
-            $"{DateTime.Now:HH:mm:ss.fff} FsStatusInfo startEnd={infoStartEnd} operation={infoOperation} remoteDir={remoteDir}");
+            $"{DateTime.Now:HH:mm:ss.fff} FsStatusInfo startEnd={infoStartEnd} operation={infoOperation} remoteDir={remoteDir} correlation_id={correlationId}");
+        if (infoStartEnd != 0)
+        {
+            WfxCorrelationContext.End();
+        }
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FsGetBackgroundFlags")]

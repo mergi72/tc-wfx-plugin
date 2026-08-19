@@ -26,6 +26,7 @@ public sealed class CredentialBrokerClientTests
 
         Assert.NotNull(handler.Request);
         Assert.Equal("tc-wfx", Assert.Single(handler.Request!.Headers.GetValues("X-VFS-Component")));
+        Assert.True(Guid.TryParse(Assert.Single(handler.Request.Headers.GetValues("X-VFS-Correlation-ID")), out _));
     }
 
     private sealed class CapturingHandler : HttpMessageHandler

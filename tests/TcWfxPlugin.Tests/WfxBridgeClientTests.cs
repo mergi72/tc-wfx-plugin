@@ -29,6 +29,7 @@ public sealed class WfxBridgeClientTests
         Assert.Equal("alfresco", result.Data.DefaultProvider);
         Assert.EndsWith("/bridge/wfx/connections", handler.Requests[^1].RequestUri?.AbsolutePath, StringComparison.Ordinal);
         Assert.Equal("tc-wfx", Assert.Single(handler.Requests[^1].Headers.GetValues("X-VFS-Component")));
+        Assert.True(Guid.TryParse(Assert.Single(handler.Requests[^1].Headers.GetValues("X-VFS-Correlation-ID")), out _));
     }
 
     [Fact]

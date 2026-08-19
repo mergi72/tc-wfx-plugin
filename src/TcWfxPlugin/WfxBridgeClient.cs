@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using TcWfxPlugin.Bridge;
 using TcWfxPlugin.Contracts;
+using TcWfxPlugin.Wfx;
 
 namespace TcWfxPlugin;
 
@@ -197,6 +198,7 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         {
             Content = JsonContent.Create(new WfxPathRequest { Path = providerPath, Auth = auth }, SerializerContext.WfxPathRequest),
         };
+        WfxCorrelationContext.Apply(request);
 
         var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         var mediaType = response.Content.Headers.ContentType?.MediaType;
@@ -418,7 +420,9 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(UploadTimeout);
 
-        using var response = await _httpClient.PostAsync("bridge/wfx/upload-raw", form, timeoutCts.Token);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "bridge/wfx/upload-raw") { Content = form };
+        WfxCorrelationContext.Apply(request);
+        using var response = await _httpClient.SendAsync(request, timeoutCts.Token);
         return await ParseResponseAsync(response, SerializerContext.WfxResponseJsonElement, timeoutCts.Token);
     }
 
@@ -520,8 +524,12 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             return WfxResponse<TData>.Failed(compatibilityError, 426);
         }
 
-        using var content = JsonContent.Create(payload, requestTypeInfo);
-        using var response = await _httpClient.PostAsync(route, content, cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Post, route)
+        {
+            Content = JsonContent.Create(payload, requestTypeInfo),
+        };
+        WfxCorrelationContext.Apply(request);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
         return await ParseResponseAsync(response, responseTypeInfo, cancellationToken);
     }
 
@@ -536,7 +544,9 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
             return WfxResponse<TData>.Failed(compatibilityError, 426);
         }
 
-        using var response = await _httpClient.GetAsync(route, cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get, route);
+        WfxCorrelationContext.Apply(request);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
         return await ParseResponseAsync(response, responseTypeInfo, cancellationToken);
     }
 
@@ -596,7 +606,9 @@ public sealed class WfxBridgeClient : IWfxBridgeClient
 
     private async Task<BridgeHealthResponse> GetBridgeHealthAsync(CancellationToken cancellationToken)
     {
-        using var response = await _httpClient.GetAsync("health", cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "health");
+        WfxCorrelationContext.Apply(request);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
         var rawBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)

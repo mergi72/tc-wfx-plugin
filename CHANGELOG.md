@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.1] - 2026-08-19
+
+### Added
+
+- Generate one correlation ID for each foreground Total Commander WFX operation.
+- Propagate the ID to the Credential Broker and Provider Bridge through `X-VFS-Correlation-ID`.
+- Include the ID in WFX status logs for shared VFS Platform diagnostics.
+
 ## [1.1.0] - 2026-08-19
 
 ### Added

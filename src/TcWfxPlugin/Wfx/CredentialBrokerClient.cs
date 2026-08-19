@@ -41,8 +41,12 @@ public sealed class HttpCredentialBrokerClient : ICredentialBrokerClient
             };
 
             var json = JsonSerializer.Serialize(request, SerializerContext.CredentialBrokerRequest);
-            using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            using var response = _httpClient.PostAsync("credentials/resolve", content).GetAwaiter().GetResult();
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "credentials/resolve")
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            };
+            WfxCorrelationContext.Apply(requestMessage);
+            using var response = _httpClient.SendAsync(requestMessage).GetAwaiter().GetResult();
             var rawResponse = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
             if (string.IsNullOrWhiteSpace(rawResponse))
             {
