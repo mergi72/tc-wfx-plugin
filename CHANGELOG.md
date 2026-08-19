@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2026-08-19
+
+### Changed
+
+- Write TC-WFX diagnostic logs in the shared VFS Platform timestamp, level, and component format.
+- Centralize diagnostic line formatting and cover it with a regression test.
+
 ## [1.1.1] - 2026-08-19
 
 ### Added

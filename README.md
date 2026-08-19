@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mergi72/tc-wfx-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/mergi72/tc-wfx-plugin/actions/workflows/ci.yml)
 [![Status](https://img.shields.io/badge/Status-1.0-brightgreen)](https://github.com/mergi72/tc-wfx-plugin)
-[![Plugin](https://img.shields.io/badge/Plugin-v1.1.1-blue)](https://github.com/mergi72/tc-wfx-plugin/releases/tag/v1.1.1)
+[![Plugin](https://img.shields.io/badge/Plugin-v1.1.2-blue)](https://github.com/mergi72/tc-wfx-plugin/releases/tag/v1.1.2)
 [![Installer](https://img.shields.io/badge/Installer-v1.0.0-blueviolet)](https://github.com/mergi72/dms-provider-installer/releases/tag/v1.0.0)
 
 Total Commander x64 filesystem plugin for browsing and transferring files through a local `dms-provider-bridge` instance.
@@ -104,7 +104,7 @@ Current intended flow:
 
 ## Release Notes
 
-- See `CHANGELOG.md` for release history and `v1.1.1` notes.
+- See `CHANGELOG.md` for release history and `v1.1.2` notes.
 - For first external testing scope, see `RELEASE_NOTES_v0.1.0-alpha.md`.
 
 ## License
