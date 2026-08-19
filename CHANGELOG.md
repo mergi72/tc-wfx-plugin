@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-08-19
+
+### Added
+
+- Identify Total Commander WFX requests to the Provider Bridge and Credential Broker as the `tc-wfx` VFS component for shared platform diagnostics.
+
 ## [1.0.0] - 2026-06-23
 
 ### Changed

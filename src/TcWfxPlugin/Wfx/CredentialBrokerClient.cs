@@ -27,6 +27,7 @@ public sealed class HttpCredentialBrokerClient : ICredentialBrokerClient
     public HttpCredentialBrokerClient(HttpClient httpClient)
     {
         _httpClient = httpClient;
+        _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("X-VFS-Component", "tc-wfx");
     }
 
     public BridgeAuthContext? Resolve(CredentialBrokerAuthRequirement requirement, string? provider = null)
